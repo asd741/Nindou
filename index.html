@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>倒计时页面</title>
+    <title>倒計時頁面</title>
     <style>
       * {
         margin: 0;
@@ -32,11 +32,11 @@
       }
 
       .top {
-        background-color: #ffe4e6; /* 清淡的粉色 */
+        background-color: #ffe4e6;
       }
 
       .bottom {
-        background-color: #e0f2fe; /* 清淡的天蓝色 */
+        background-color: #e0f2fe;
       }
 
       .number {
@@ -87,7 +87,6 @@
           this.currentValue = Math.max(0, this.initialValue - elapsed)
 
           if (this.currentValue > 0) {
-            // 显示到小数点后2位
             this.element.textContent = this.currentValue.toFixed(2)
             this.animationFrame = requestAnimationFrame(() => this.update())
           } else {
@@ -106,12 +105,8 @@
           this.currentValue = this.initialValue
         }
       }
-
-      // 初始化两个倒计时器
       const topTimer = new CountdownTimer(document.getElementById('topNumber'), 4)
       const bottomTimer = new CountdownTimer(document.getElementById('bottomNumber'), 18)
-
-      // 立即触发的事件处理函数（兼容手机和电脑）
       function handleImmediateTrigger(timer) {
         return (e) => {
           e.preventDefault()
@@ -120,20 +115,14 @@
           timer.start()
         }
       }
-
-      // 绑定立即触发事件（touchstart 和 mousedown）
       const topSection = document.getElementById('topSection')
       const bottomSection = document.getElementById('bottomSection')
-
-      // 触摸事件（手机）
       topSection.addEventListener('touchstart', handleImmediateTrigger(topTimer), {
         passive: false,
       })
       bottomSection.addEventListener('touchstart', handleImmediateTrigger(bottomTimer), {
         passive: false,
       })
-
-      // 鼠标按下事件（电脑）
       topSection.addEventListener('mousedown', handleImmediateTrigger(topTimer))
       bottomSection.addEventListener('mousedown', handleImmediateTrigger(bottomTimer))
     </script>
