@@ -1,130 +1,13 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-TW">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>倒計時頁面</title>
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-
-      body {
-        overflow: hidden;
-        font-family: Arial, sans-serif;
-      }
-
-      .section {
-        width: 100vw;
-        height: 50vh;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        cursor: pointer;
-        user-select: none;
-        transition: opacity 0.1s;
-      }
-
-      .section:active {
-        opacity: 0.9;
-      }
-
-      .top {
-        background-color: #ffe4e6;
-      }
-
-      .bottom {
-        background-color: #e0f2fe;
-      }
-
-      .number {
-        font-size: 15vw;
-        font-weight: bold;
-        color: #333;
-      }
-
-      @media (max-width: 768px) {
-        .number {
-          font-size: 20vw;
-        }
-      }
-    </style>
+    <title>忍道傷害計算器</title>
+    <meta name="description" content="忍道遊戲傷害計算器 — 支援全狀態增益、元素相剋與多種攻擊類型" />
   </head>
   <body>
-    <section class="section top" id="topSection">
-      <div class="number" id="topNumber">6</div>
-    </section>
-    <section class="section bottom" id="bottomSection">
-      <div class="number" id="bottomNumber">20</div>
-    </section>
-
-    <script>
-      class CountdownTimer {
-        constructor(element, initialValue) {
-          this.element = element
-          this.initialValue = initialValue
-          this.currentValue = initialValue
-          this.isRunning = false
-          this.startTime = null
-          this.animationFrame = null
-        }
-
-        start() {
-          if (this.isRunning) return
-
-          this.isRunning = true
-          this.currentValue = this.initialValue
-          this.startTime = performance.now()
-          this.update()
-        }
-
-        update() {
-          if (!this.isRunning) return
-
-          const elapsed = (performance.now() - this.startTime) / 1000
-          this.currentValue = Math.max(0, this.initialValue - elapsed)
-
-          if (this.currentValue > 0) {
-            this.element.textContent = this.currentValue.toFixed(2)
-            this.animationFrame = requestAnimationFrame(() => this.update())
-          } else {
-            // 归零后重置
-            this.element.textContent = this.initialValue
-            this.isRunning = false
-          }
-        }
-
-        reset() {
-          this.isRunning = false
-          if (this.animationFrame) {
-            cancelAnimationFrame(this.animationFrame)
-          }
-          this.element.textContent = this.initialValue
-          this.currentValue = this.initialValue
-        }
-      }
-      const topTimer = new CountdownTimer(document.getElementById('topNumber'), 6)
-      const bottomTimer = new CountdownTimer(document.getElementById('bottomNumber'), 20)
-      function handleImmediateTrigger(timer) {
-        return (e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          timer.reset()
-          timer.start()
-        }
-      }
-      const topSection = document.getElementById('topSection')
-      const bottomSection = document.getElementById('bottomSection')
-      topSection.addEventListener('touchstart', handleImmediateTrigger(topTimer), {
-        passive: false,
-      })
-      bottomSection.addEventListener('touchstart', handleImmediateTrigger(bottomTimer), {
-        passive: false,
-      })
-      topSection.addEventListener('mousedown', handleImmediateTrigger(topTimer))
-      bottomSection.addEventListener('mousedown', handleImmediateTrigger(bottomTimer))
-    </script>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
   </body>
 </html>
