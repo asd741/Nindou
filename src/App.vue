@@ -1,1278 +1,774 @@
 <script setup>
 import { ref, reactive, computed } from 'vue'
 
-// ─── CONSTANTS ─────────────────────────────────────────────────────────────
-
-const ELEMENTS = ['無', '炎', '冰', '風', '雷', '地', '光', '闇', '修羅', '毒木']
+const ELEMENTS = ['無', '炎', '冰', '風', '雷', '地', '光', '闇', '修羅', '毒', '木']
 
 const ELEM_COLOR = {
-  '無': '#666',
-  '炎': '#ff6b35',
-  '冰': '#74c0fc',
-  '風': '#a9e34b',
-  '雷': '#f4c030',
-  '地': '#b07b45',
-  '光': '#ffd700',
-  '闇': '#b08fff',
-  '修羅': '#e63946',
-  '毒木': '#52b788',
+  '無': '#888899', '炎': '#ff6b35', '冰': '#74c0fc',
+  '風': '#a9e34b', '雷': '#f4c030', '地': '#b07b45',
+  '光': '#ffd700', '闇': '#b08fff', '修羅': '#e63946',
+  '毒': '#2dd4bf', '木': '#52b788',
 }
 
-// strong[A] = elements that A is strong against (+0.2x)
-const STRONG = {
-  '炎': ['風'],
-  '冰': ['炎', '地'],
-  '風': ['雷'],
-  '雷': ['地'],
-  '地': ['冰'],
-  '光': ['闇', '修羅'],
-  '闇': ['光'],
-  '修羅': [],
-  '毒木': ['炎', '冰', '風', '雷', '地', '闇'],
-  '無': [],
+const ADJ = {
+  '炎':  { '冰': -0.2 },
+  '冰':  { '炎': 0.2, '毒': 0.2 },
+  '光':  { '闇': 0.2, '修羅': 0.2, '毒': 0.2, '無': -0.2, '光': -0.2 },
+  '闇':  { '無': 0.2, '光': 0.2, '木': 0.2, '闇': -0.2, '修羅': -0.2 },
+  '修羅': { '無': 0.2, '毒': 0.2, '木': 0.2, '闇': -0.2, '修羅': -0.2 },
+  '毒':  { '無': 0.2, '炎': 0.2, '冰': 0.2, '風': 0.2, '雷': 0.2, '地': 0.2, '修羅': 0.2, '木': 0.2, '光': -0.2, '毒': -0.2 },
+  '木':  { '無': 0.2, '炎': 0.2, '冰': 0.2, '風': 0.2, '雷': 0.2, '地': 0.2, '毒': 0.2, '闇': -0.2, '木': -0.2 },
 }
 
-function elemAdj(a, d) {
-  if (a === '無' || d === '無') return 0
-  if (STRONG[a]?.includes(d)) return 0.2
-  if (STRONG[d]?.includes(a)) return -0.2
-  return 0
-}
+const ATK_BTNS = [
+  { key: 'hotblood',   label: '熱血',     val: '+0.5'  },
+  { key: 'magicWater', label: '魔水',     val: '+1'    },
+  { key: 'redBug',     label: '赤蟲',     val: '−0.5' },
+  { key: 'shikigami',  label: '式神',     val: '+1'    },
+  { key: 'wrathSeal',  label: '暴怒法印', val: '+3'    },
+]
 
-function fmt(n) {
-  return n < 0 ? `−${Math.abs(n).toLocaleString()}` : n.toLocaleString()
-}
+const DEF_BTNS = [
+  { key: 'steel',      label: '鋼鐵',     val: '−0.25' },
+  { key: 'magicWater', label: '魔水',     val: '−0.5'  },
+  { key: 'greenBug',   label: '青蟲',     val: '+0.5'  },
+  { key: 'wrathSeal',  label: '暴怒法印', val: '+3'    },
+]
 
-function round2(n) {
-  return Math.round(n * 100) / 100
-}
+function getAdj(a, d) { return ADJ[a]?.[d] ?? 0 }
+function r2(n) { return Math.round(n * 100) / 100 }
 
-// ─── STATE ─────────────────────────────────────────────────────────────────
+const baseDmg = ref(150)
 
 const atk = reactive({
-  hotblooded: false,
-  explosive: false,
-  magicWater: false,
-  redBug: false,
-  shikigami: false,
-  wrathSeal: false,
-  shura: false,
-  elem: '無',
-  useDual: false,
-  dualElem: '無',
-  baseAtk: 100,
-  baseMagic: 100,
+  hotblood: false, magicWater: false, redBug: false,
+  shikigami: false, wrathSeal: false,
+  attr1: '無', attr2: '無', useDual: false,
 })
 
 const def = reactive({
-  iron: false,
-  magicWater: false,
-  greenBug: false,
-  wrathSeal: false,
-  elem: '無',
-  useDual: false,
-  dualElem: '無',
-  defense: 0,
-  magicDef: 0,
+  steel: false, magicWater: false, greenBug: false, wrathSeal: false,
+  attr1: '無', attr2: '無', useDual: false,
 })
 
-const collisionType = ref('normal')
-
-// ─── EFFECTIVE BUFFS (after override rules) ────────────────────────────────
-
 const eAtk = computed(() => {
-  const { hotblooded, explosive, magicWater, redBug, shikigami, wrathSeal } = atk
-  if (wrathSeal) {
-    return { hotblooded: false, explosive: false, magicWater: false, redBug, shikigami, wrathSeal: true }
-  }
-  if (magicWater) {
-    return { hotblooded: false, explosive: false, magicWater: true, redBug, shikigami, wrathSeal: false }
-  }
-  return { hotblooded, explosive, magicWater, redBug, shikigami, wrathSeal: false }
+  if (atk.wrathSeal)
+    return { hotblood: false, magicWater: false, redBug: atk.redBug, shikigami: atk.shikigami, wrathSeal: true }
+  if (atk.magicWater)
+    return { hotblood: false, magicWater: true, redBug: atk.redBug, shikigami: atk.shikigami, wrathSeal: false }
+  return { hotblood: atk.hotblood, magicWater: false, redBug: atk.redBug, shikigami: atk.shikigami, wrathSeal: false }
 })
 
 const eDef = computed(() => {
-  const { iron, magicWater, greenBug, wrathSeal } = def
-  return {
-    iron,
-    magicWater,
-    // Attacker's Wrath Seal ignores defender's Green Bug
-    greenBug: atk.wrathSeal ? false : greenBug,
-    wrathSeal,
-  }
+  const greenBugActive = def.greenBug && !atk.wrathSeal
+  if (def.wrathSeal)
+    return { steel: false, magicWater: false, greenBug: false, wrathSeal: true }
+  if (def.magicWater)
+    return { steel: false, magicWater: true, greenBug: greenBugActive, wrathSeal: false }
+  return { steel: def.steel, magicWater: false, greenBug: greenBugActive, wrathSeal: false }
 })
 
-// ─── CORE MULTIPLIERS ──────────────────────────────────────────────────────
+const atkAttrs = computed(() => {
+  const a = []
+  if (atk.attr1 !== '無') a.push(atk.attr1)
+  if (atk.useDual && atk.attr2 !== '無' && atk.attr2 !== atk.attr1) a.push(atk.attr2)
+  return a
+})
+
+const defAttrs = computed(() => {
+  const a = []
+  if (def.attr1 !== '無') a.push(def.attr1)
+  if (def.useDual && def.attr2 !== '無' && def.attr2 !== def.attr1) a.push(def.attr2)
+  return a
+})
+
+const atkHasShura = computed(() => atkAttrs.value.includes('修羅'))
 
 const BAM = computed(() => {
-  const b = eAtk.value
-  if (b.wrathSeal) return 4
+  const e = eAtk.value
   let v = 1
-  if (b.magicWater) v += 1
-  if (b.hotblooded || b.explosive) v += 0.5  // don't stack; only one +0.5
-  if (b.redBug) v -= 0.5
-  if (b.shikigami) v += 1
-  return round2(v)
+  if (e.wrathSeal)       v += 3
+  else if (e.magicWater) v += 1
+  else if (e.hotblood)   v += 0.5
+  if (e.redBug)    v -= 0.5
+  if (e.shikigami) v += 1
+  return r2(v)
+})
+
+const rawDRM = computed(() => {
+  const e = eDef.value
+  if (e.wrathSeal) return 4
+  let v = 1
+  if (e.magicWater)    v -= 0.5
+  else if (e.steel)    v -= 0.25
+  if (e.greenBug) v += 0.5
+  return r2(v)
 })
 
 const DRM = computed(() => {
-  const b = eDef.value
-  if (b.wrathSeal) return 4
-  let v = 1
-  if (b.iron) v -= 0.25
-  if (b.magicWater) v -= 0.5
-  if (b.greenBug) v += 0.5
-  // Shura attribute: DRM cannot drop below 1
-  if (atk.shura && v < 1) v = 1
-  return round2(v)
+  const v = rawDRM.value
+  return (atkHasShura.value && v < 1) ? 1 : v
 })
 
-const CM = computed(() => round2(BAM.value + DRM.value - 1))
-
-// ─── ELEMENT ───────────────────────────────────────────────────────────────
-
-const defElems = computed(() => {
-  const arr = def.elem !== '無' ? [def.elem] : []
-  if (def.useDual && def.dualElem !== '無' && def.dualElem !== def.elem) {
-    arr.push(def.dualElem)
-  }
-  return arr
-})
-
-const atkElems = computed(() => {
-  const arr = atk.elem !== '無' ? [atk.elem] : []
-  if (atk.useDual && atk.dualElem !== '無' && atk.dualElem !== atk.elem) {
-    arr.push(atk.dualElem)
-  }
-  return arr
-})
+const CM = computed(() => r2(BAM.value + DRM.value - 1))
 
 const elemMult = computed(() => {
-  if (atkElems.value.length === 0 || defElems.value.length === 0) return 1
-  // Use primary attacker element for matrix calculation
-  const ae = atk.elem
-  if (ae === '無') return 1
-  const adj = defElems.value.reduce((s, de) => s + elemAdj(ae, de), 0)
-  return round2(1 + adj)
+  if (!atkAttrs.value.length || !defAttrs.value.length) return 1
+  let adj = 0
+  for (const a of atkAttrs.value)
+    for (const d of defAttrs.value)
+      adj += getAdj(a, d)
+  return r2(1 + adj)
 })
 
-// ─── DAMAGE FORMULAS ───────────────────────────────────────────────────────
+const finalDmg = computed(() => Math.floor((Number(baseDmg.value) || 0) * CM.value * elemMult.value))
 
-const collBase = computed(() => {
-  if (collisionType.value === 'yaksha') return 100
-  if (collisionType.value === 'redOgre') return 200
-  return 30
-})
-
-const dmg = computed(() => {
-  const bAtk = Number(atk.baseAtk) || 0
-  const bMag = Number(atk.baseMagic) || 0
-  const bDef = Number(def.defense) || 0
-  const bMDef = Number(def.magicDef) || 0
-
-  return {
-    // Normal Attack / Shikigami: Base × CM × Elemental
-    normal: Math.floor(bAtk * CM.value * elemMult.value),
-
-    // Secret Technique: (Base × DRM × Elemental) − Def
-    secret: Math.floor(bAtk * DRM.value * elemMult.value) - bDef,
-
-    // Ninjutsu: Base × DRM − MagicDef
-    ninjutsu: Math.floor(bMag * DRM.value) - bMDef,
-
-    // Money Dart: 150 × CM
-    moneyDart: Math.floor(150 * CM.value),
-
-    // Collision: Base × CM  (base: normal=30, yaksha=100, redOgre=200)
-    collision: Math.floor(collBase.value * CM.value),
-
-    // Poison: CollisionDmg × 3, ignores DRM (use BAM only)
-    poison: Math.floor(collBase.value * BAM.value * 3),
-  }
-})
-
-// ─── BREAKDOWNS ────────────────────────────────────────────────────────────
-
-const bamBreakdown = computed(() => {
-  const r = atk
-  const b = eAtk.value
-  const steps = []
-
-  if (r.wrathSeal) {
-    steps.push({ label: '基礎', delta: '+1', active: true })
-    steps.push({ label: '怒印', delta: '+3', active: true })
-    const dead = []
-    if (r.magicWater) dead.push('魔水')
-    if (r.hotblooded) dead.push('熱血')
-    if (r.explosive) dead.push('爆裂')
-    if (dead.length) steps.push({ label: dead.join('、'), delta: '×', active: false, note: '怒印覆蓋，失效' })
-    if (r.redBug) steps.push({ label: '赤虫', delta: '-0.5', active: true })
-    if (r.shikigami) steps.push({ label: '式神', delta: '+1', active: true })
-    return steps
-  }
-
-  steps.push({ label: '基礎', delta: '+1', active: true })
-
-  if (r.magicWater) {
-    steps.push({ label: '魔水', delta: '+1', active: true })
-  }
-
-  if (r.hotblooded && r.explosive) {
-    const inactive = b.magicWater  // disabled by Magic Water
-    steps.push({ label: '熱血', delta: '+0.5', active: !inactive })
-    steps.push({ label: '爆裂', delta: '+0.5', active: false, note: inactive ? '魔水覆蓋' : '與熱血不疊加' })
-  } else if (r.hotblooded) {
-    steps.push({ label: '熱血', delta: '+0.5', active: b.hotblooded, note: b.hotblooded ? '' : '魔水覆蓋，失效' })
-  } else if (r.explosive) {
-    steps.push({ label: '爆裂', delta: '+0.5', active: b.explosive, note: b.explosive ? '' : '魔水覆蓋，失效' })
-  }
-
-  if (r.redBug) steps.push({ label: '赤虫', delta: '-0.5', active: true })
-  if (r.shikigami) steps.push({ label: '式神', delta: '+1', active: true })
-
-  return steps
-})
-
-const drmBreakdown = computed(() => {
-  const r = def
-  const b = eDef.value
-  const steps = []
-
-  if (r.wrathSeal) {
-    steps.push({ label: '基礎', delta: '+1', active: true })
-    steps.push({ label: '怒印', delta: '+3', active: true })
-    return steps
-  }
-
-  steps.push({ label: '基礎', delta: '+1', active: true })
-  if (r.iron) steps.push({ label: '鉄', delta: '-0.25', active: true })
-  if (r.magicWater) steps.push({ label: '魔水', delta: '-0.5', active: true })
-  if (r.greenBug) {
-    const active = b.greenBug
-    steps.push({ label: '緑虫', delta: '+0.5', active, note: active ? '' : '攻方怒印，無效' })
-  }
-
-  if (atk.shura) {
-    const rawDrm = round2(1 + (b.iron ? -0.25 : 0) + (b.magicWater ? -0.5 : 0) + (b.greenBug ? 0.5 : 0))
-    if (rawDrm < 1) {
-      steps.push({ label: '修羅補正', delta: `→ 強制 ≥ 1（原值 ${rawDrm}）`, active: true, special: true })
-    }
-  }
-
-  return steps
-})
-
-const elemBreakdown = computed(() => {
-  const ae = atk.elem
-  if (ae === '無') return [{ text: '攻方無屬性，無元素加成' }]
-  if (defElems.value.length === 0) return [{ text: '防方無屬性，無元素加成' }]
-
-  const parts = [{ text: '基礎 1.0' }]
-  for (const de of defElems.value) {
-    const adj = elemAdj(ae, de)
-    if (adj > 0) parts.push({ text: `+0.2`, sub: `${ae} 克 ${de}`, good: true })
-    else if (adj < 0) parts.push({ text: `-0.2`, sub: `${ae} 弱於 ${de}`, bad: true })
-    else parts.push({ text: `±0`, sub: `${ae} vs ${de} 中立`, neutral: true })
-  }
-  return parts
-})
-
-// ─── UI HELPERS ────────────────────────────────────────────────────────────
-
-const ATK_BUFFS = [
-  { key: 'hotblooded', label: '熱血' },
-  { key: 'explosive',  label: '爆裂' },
-  { key: 'magicWater', label: '魔水' },
-  { key: 'redBug',     label: '赤虫' },
-  { key: 'shikigami',  label: '式神' },
-  { key: 'wrathSeal',  label: '怒印' },
-]
-
-const DEF_BUFFS = [
-  { key: 'iron',       label: '鉄' },
-  { key: 'magicWater', label: '魔水' },
-  { key: 'greenBug',   label: '緑虫' },
-  { key: 'wrathSeal',  label: '怒印' },
-]
-
-const COLL_TYPES = [
-  { key: 'normal',  label: '通常', base: 30 },
-  { key: 'yaksha',  label: '夜叉', base: 100 },
-  { key: 'redOgre', label: '紅鬼', base: 200 },
-]
-
-function atkBuffDisabled(key) {
-  return atk[key] && !eAtk.value[key]
-}
-
-function defBuffDisabled(key) {
-  return def[key] && !eDef.value[key]
-}
-
-const atkWarnMsg = computed(() => {
+const atkWarn = computed(() => {
   if (atk.wrathSeal) {
-    const dead = ['magicWater', 'hotblooded', 'explosive'].filter(k => atk[k]).map(k => ({ magicWater: '魔水', hotblooded: '熱血', explosive: '爆裂' }[k]))
-    return dead.length ? `怒印啟動：${dead.join('、')} 失效` : ''
+    const lost = [atk.magicWater && '魔水', atk.hotblood && '熱血'].filter(Boolean)
+    return lost.length ? `暴怒法印啟動：${lost.join('、')} 失效` : ''
   }
-  if (atk.magicWater && (atk.hotblooded || atk.explosive)) {
-    return '魔水啟動：熱血/爆裂 失效'
-  }
-  if (atk.hotblooded && atk.explosive) {
-    return '熱血・爆裂不疊加，僅計 +0.5'
-  }
-  return ''
+  return (atk.magicWater && atk.hotblood) ? '魔水啟動：熱血 失效' : ''
 })
 
-const defWarnMsg = computed(() => {
-  if (def.greenBug && atk.wrathSeal) return '攻方怒印：緑虫無效'
-  return ''
+const defWarn = computed(() => {
+  const msgs = []
+  if (def.wrathSeal) {
+    const lost = [def.magicWater && '魔水', def.steel && '鋼鐵'].filter(Boolean)
+    if (lost.length) msgs.push(`暴怒法印啟動：${lost.join('、')} 失效`)
+  } else if (def.magicWater && def.steel) {
+    msgs.push('魔水啟動：鋼鐵 失效')
+  }
+  if (def.greenBug && atk.wrathSeal) msgs.push('攻方暴怒法印：青蟲 無效')
+  return msgs.join('　')
 })
 
-// Element matrix display (for reference tooltip)
-function getMatrixRelation(e) {
-  const strong = STRONG[e] || []
-  const weak = ELEMENTS.filter(x => STRONG[x]?.includes(e))
-  return { strong, weak }
+const bamDetail = computed(() => {
+  const steps = [{ label: '基礎', val: '1', cls: '' }]
+  if (atk.wrathSeal) {
+    steps.push({ label: '暴怒法印', val: '+3', cls: 'pos' })
+    if (atk.magicWater) steps.push({ label: '魔水', val: '+1', cls: 'off' })
+    if (atk.hotblood)   steps.push({ label: '熱血', val: '+0.5', cls: 'off' })
+  } else if (atk.magicWater) {
+    steps.push({ label: '魔水', val: '+1', cls: 'pos' })
+    if (atk.hotblood) steps.push({ label: '熱血', val: '+0.5', cls: 'off' })
+  } else if (atk.hotblood) {
+    steps.push({ label: '熱血', val: '+0.5', cls: 'pos' })
+  }
+  if (atk.redBug)    steps.push({ label: '赤蟲', val: '−0.5', cls: 'neg' })
+  if (atk.shikigami) steps.push({ label: '式神', val: '+1', cls: 'pos' })
+  return steps
+})
+
+const drmDetail = computed(() => {
+  const steps = [{ label: '基礎', val: '1', cls: '' }]
+  if (def.wrathSeal) {
+    steps.push({ label: '暴怒法印', val: '+3', cls: 'pos' })
+    if (def.magicWater) steps.push({ label: '魔水', val: '−0.5', cls: 'off' })
+    if (def.steel)      steps.push({ label: '鋼鐵', val: '−0.25', cls: 'off' })
+  } else if (def.magicWater) {
+    steps.push({ label: '魔水', val: '−0.5', cls: 'neg' })
+    if (def.steel) steps.push({ label: '鋼鐵', val: '−0.25', cls: 'off' })
+  } else if (def.steel) {
+    steps.push({ label: '鋼鐵', val: '−0.25', cls: 'neg' })
+  }
+  if (def.greenBug && !def.wrathSeal) {
+    const active = eDef.value.greenBug
+    steps.push({ label: '青蟲', val: '+0.5', cls: active ? 'pos' : 'off', note: active ? '' : '攻方暴怒法印，無效' })
+  }
+  if (atkHasShura.value && rawDRM.value < 1)
+    steps.push({ label: '修羅補正', val: '↑≥1', cls: 'shura' })
+  return steps
+})
+
+const elemDetail = computed(() => {
+  if (!atkAttrs.value.length || !defAttrs.value.length) return []
+  const result = []
+  for (const a of atkAttrs.value)
+    for (const d of defAttrs.value)
+      result.push({ a, d, adj: getAdj(a, d) })
+  return result
+})
+
+function atkBtnCls(key) {
+  if (!atk[key]) return {}
+  const eff = eAtk.value[key]
+  return { on: true, dim: !eff, wrath: key === 'wrathSeal' && eff, 'atk-act': key !== 'wrathSeal' && eff }
+}
+
+function defBtnCls(key) {
+  if (!def[key]) return {}
+  const eff = eDef.value[key]
+  return { on: true, dim: !eff, wrath: key === 'wrathSeal' && eff, 'grn-act': key === 'greenBug' && eff, 'def-act': key !== 'wrathSeal' && key !== 'greenBug' && eff }
+}
+
+function resetAll() {
+  baseDmg.value = 150
+  Object.assign(atk, { hotblood: false, magicWater: false, redBug: false, shikigami: false, wrathSeal: false, attr1: '無', attr2: '無', useDual: false })
+  Object.assign(def, { steel: false, magicWater: false, greenBug: false, wrathSeal: false, attr1: '無', attr2: '無', useDual: false })
 }
 </script>
 
 <template>
   <div class="app">
-    <!-- ═══ HEADER ═══ -->
-    <header class="header">
-      <div class="header-inner">
-        <h1>忍道傷害計算器</h1>
-        <p class="subtitle">Nindou Damage Calculator</p>
-      </div>
+
+    <!-- HEADER -->
+    <header class="hd">
+      <div class="hd-brand">忍豆風雲4工具箱</div>
+      <div class="hd-title">傷害計算</div>
     </header>
 
-    <!-- ═══ TWO-COLUMN PANELS ═══ -->
-    <div class="panels-wrap">
+    <!-- BASE DAMAGE -->
+    <div class="base-sec">
+      <div class="base-inner">
+        <span class="base-lbl">基礎傷害</span>
+        <input type="number" v-model.number="baseDmg" min="0" placeholder="輸入基礎傷害" class="base-inp" />
+        <div class="presets">
+          <button class="pre-btn" @click="baseDmg = 150">錢標 150</button>
+          <button class="pre-btn rst-btn" @click="resetAll">重置</button>
+        </div>
+      </div>
+    </div>
 
-      <!-- ── ATTACKER ── -->
-      <section class="panel panel-atk">
-        <div class="panel-head">
-          <span class="panel-icon">⚔</span>
-          <h2>攻擊方</h2>
+    <!-- PANELS -->
+    <div class="panels">
+
+      <!-- ATTACKER -->
+      <section class="panel">
+        <div class="ptitle atk-title">
+          <span class="ptitle-icon">⚔</span>
+          <span>攻擊方</span>
+          <span class="ptag atk-tag">BAM {{ BAM }}</span>
         </div>
 
-        <!-- Buffs -->
-        <div class="block">
-          <div class="block-title">狀態增益 (BAM)</div>
-          <div class="buff-row">
+        <div class="pblk">
+          <div class="pblk-hd">攻擊狀態</div>
+          <div class="btn-row">
             <button
-              v-for="buf in ATK_BUFFS" :key="buf.key"
-              class="buff-btn"
-              :class="{
-                active: atk[buf.key],
-                dimmed: atkBuffDisabled(buf.key),
-                wrath: buf.key === 'wrathSeal' && atk.wrathSeal
-              }"
-              @click="atk[buf.key] = !atk[buf.key]"
-            >{{ buf.label }}</button>
+              v-for="b in ATK_BTNS" :key="b.key"
+              class="sbtn" :class="atkBtnCls(b.key)"
+              @click="atk[b.key] = !atk[b.key]"
+            >
+              <span class="sb-name">{{ b.label }}</span>
+              <span class="sb-val">{{ b.val }}</span>
+            </button>
           </div>
-          <p v-if="atkWarnMsg" class="warn-msg">⚠ {{ atkWarnMsg }}</p>
+          <div v-if="atkWarn" class="warn">{{ atkWarn }}</div>
         </div>
 
-        <!-- Shura attribute -->
-        <div class="block">
-          <div class="block-title">特殊屬性</div>
-          <label class="toggle-label">
-            <input type="checkbox" v-model="atk.shura" />
-            <span>修羅特性 <em>（目標受傷倍率強制 ≥ 1）</em></span>
-          </label>
-        </div>
-
-        <!-- Attacker Element -->
-        <div class="block">
-          <div class="block-title">元素屬性</div>
-          <div class="elem-grid">
+        <div class="pblk">
+          <div class="pblk-hd">元素屬性</div>
+          <div class="egrid">
             <button
               v-for="e in ELEMENTS" :key="e"
-              class="elem-btn"
-              :class="{ selected: atk.elem === e }"
-              :style="atk.elem === e ? { '--ec': ELEM_COLOR[e] } : {}"
-              @click="atk.elem = e"
+              class="ebtn" :class="{ 'ebtn-on': atk.attr1 === e }"
+              :style="atk.attr1 === e ? { '--ec': ELEM_COLOR[e] } : {}"
+              @click="atk.attr1 = e"
             >{{ e }}</button>
           </div>
-          <label class="toggle-label mt8">
+          <label class="dual-lbl">
             <input type="checkbox" v-model="atk.useDual" />
             <span>雙屬性</span>
           </label>
-          <div v-if="atk.useDual" class="elem-grid mt4">
+          <div v-if="atk.useDual" class="egrid mt4">
             <button
               v-for="e in ELEMENTS" :key="e"
-              class="elem-btn"
-              :class="{ selected: atk.dualElem === e }"
-              :style="atk.dualElem === e ? { '--ec': ELEM_COLOR[e] } : {}"
-              @click="atk.dualElem = e"
+              class="ebtn"
+              :class="{ 'ebtn-on': atk.attr2 === e, 'ebtn-same': e === atk.attr1 && e !== '無' }"
+              :style="atk.attr2 === e ? { '--ec': ELEM_COLOR[e] } : {}"
+              @click="atk.attr2 = e"
             >{{ e }}</button>
           </div>
-          <div v-if="atkElems.length" class="elem-preview">
+          <div v-if="atkAttrs.length" class="chips">
             <span
-              v-for="e in atkElems" :key="e"
-              class="elem-badge"
+              v-for="e in atkAttrs" :key="e" class="chip"
               :style="{ background: ELEM_COLOR[e] + '22', borderColor: ELEM_COLOR[e], color: ELEM_COLOR[e] }"
             >{{ e }}</span>
           </div>
         </div>
-
-        <!-- Base Stats -->
-        <div class="block">
-          <div class="block-title">基礎數值</div>
-          <div class="input-grid">
-            <label class="input-label">
-              <span>基礎攻擊力</span>
-              <input type="number" v-model.number="atk.baseAtk" min="0" placeholder="0" />
-            </label>
-            <label class="input-label">
-              <span>忍術威力</span>
-              <input type="number" v-model.number="atk.baseMagic" min="0" placeholder="0" />
-            </label>
-          </div>
-        </div>
-
-        <!-- Collision type -->
-        <div class="block">
-          <div class="block-title">衝撞類型</div>
-          <div class="coll-row">
-            <button
-              v-for="ct in COLL_TYPES" :key="ct.key"
-              class="coll-btn"
-              :class="{ active: collisionType === ct.key }"
-              @click="collisionType = ct.key"
-            >{{ ct.label }}<span class="coll-base">{{ ct.base }}</span></button>
-          </div>
-        </div>
       </section>
 
-      <!-- ── DEFENDER ── -->
-      <section class="panel panel-def">
-        <div class="panel-head">
-          <span class="panel-icon">🛡</span>
-          <h2>防禦方</h2>
+      <!-- DEFENDER -->
+      <section class="panel">
+        <div class="ptitle def-title">
+          <span class="ptitle-icon">🛡</span>
+          <span>受擊方</span>
+          <span class="ptag def-tag">DRM {{ DRM }}</span>
         </div>
 
-        <!-- Buffs -->
-        <div class="block">
-          <div class="block-title">狀態增益 (DRM)</div>
-          <div class="buff-row">
+        <div class="pblk">
+          <div class="pblk-hd">承受狀態</div>
+          <div class="btn-row">
             <button
-              v-for="buf in DEF_BUFFS" :key="buf.key"
-              class="buff-btn"
-              :class="{
-                active: def[buf.key],
-                dimmed: defBuffDisabled(buf.key),
-                wrath: buf.key === 'wrathSeal' && def.wrathSeal
-              }"
-              @click="def[buf.key] = !def[buf.key]"
-            >{{ buf.label }}</button>
+              v-for="b in DEF_BTNS" :key="b.key"
+              class="sbtn" :class="defBtnCls(b.key)"
+              @click="def[b.key] = !def[b.key]"
+            >
+              <span class="sb-name">{{ b.label }}</span>
+              <span class="sb-val">{{ b.val }}</span>
+            </button>
           </div>
-          <p v-if="defWarnMsg" class="warn-msg">⚠ {{ defWarnMsg }}</p>
+          <div v-if="defWarn" class="warn">{{ defWarn }}</div>
         </div>
 
-        <!-- Defender Element -->
-        <div class="block">
-          <div class="block-title">元素屬性</div>
-          <div class="elem-grid">
+        <div class="pblk">
+          <div class="pblk-hd">元素屬性</div>
+          <div class="egrid">
             <button
               v-for="e in ELEMENTS" :key="e"
-              class="elem-btn"
-              :class="{ selected: def.elem === e }"
-              :style="def.elem === e ? { '--ec': ELEM_COLOR[e] } : {}"
-              @click="def.elem = e"
+              class="ebtn" :class="{ 'ebtn-on': def.attr1 === e }"
+              :style="def.attr1 === e ? { '--ec': ELEM_COLOR[e] } : {}"
+              @click="def.attr1 = e"
             >{{ e }}</button>
           </div>
-          <label class="toggle-label mt8">
+          <label class="dual-lbl">
             <input type="checkbox" v-model="def.useDual" />
             <span>雙屬性</span>
           </label>
-          <div v-if="def.useDual" class="elem-grid mt4">
+          <div v-if="def.useDual" class="egrid mt4">
             <button
               v-for="e in ELEMENTS" :key="e"
-              class="elem-btn"
-              :class="{ selected: def.dualElem === e }"
-              :style="def.dualElem === e ? { '--ec': ELEM_COLOR[e] } : {}"
-              @click="def.dualElem = e"
+              class="ebtn"
+              :class="{ 'ebtn-on': def.attr2 === e, 'ebtn-same': e === def.attr1 && e !== '無' }"
+              :style="def.attr2 === e ? { '--ec': ELEM_COLOR[e] } : {}"
+              @click="def.attr2 = e"
             >{{ e }}</button>
           </div>
-          <div v-if="defElems.length" class="elem-preview">
+          <div v-if="defAttrs.length" class="chips">
             <span
-              v-for="e in defElems" :key="e"
-              class="elem-badge"
+              v-for="e in defAttrs" :key="e" class="chip"
               :style="{ background: ELEM_COLOR[e] + '22', borderColor: ELEM_COLOR[e], color: ELEM_COLOR[e] }"
             >{{ e }}</span>
           </div>
         </div>
-
-        <!-- Defense Stats -->
-        <div class="block">
-          <div class="block-title">防禦數值</div>
-          <div class="input-grid">
-            <label class="input-label">
-              <span>防御力</span>
-              <input type="number" v-model.number="def.defense" min="0" placeholder="0" />
-            </label>
-            <label class="input-label">
-              <span>魔法防御力</span>
-              <input type="number" v-model.number="def.magicDef" min="0" placeholder="0" />
-            </label>
-          </div>
-        </div>
-
-        <!-- Element Reference Table -->
-        <div class="block">
-          <div class="block-title">元素相剋參考</div>
-          <div class="matrix-table">
-            <div class="matrix-row matrix-header">
-              <span>元素</span><span>克屬 (+20%)</span><span>弱屬 (-20%)</span>
-            </div>
-            <div
-              v-for="e in ELEMENTS.filter(x => x !== '無')" :key="e"
-              class="matrix-row"
-            >
-              <span class="matrix-elem" :style="{ color: ELEM_COLOR[e] }">{{ e }}</span>
-              <span class="matrix-strong">
-                <span
-                  v-for="s in getMatrixRelation(e).strong" :key="s"
-                  class="matrix-badge"
-                  :style="{ color: ELEM_COLOR[s] }"
-                >{{ s }}</span>
-                <span v-if="!getMatrixRelation(e).strong.length" class="matrix-none">—</span>
-              </span>
-              <span class="matrix-weak">
-                <span
-                  v-for="w in getMatrixRelation(e).weak" :key="w"
-                  class="matrix-badge weak"
-                  :style="{ color: ELEM_COLOR[w] }"
-                >{{ w }}</span>
-                <span v-if="!getMatrixRelation(e).weak.length" class="matrix-none">—</span>
-              </span>
-            </div>
-          </div>
-        </div>
       </section>
+
     </div>
 
-    <!-- ═══ RESULTS ═══ -->
+    <!-- RESULTS -->
     <section class="results">
-      <h2 class="results-title">⚡ 倍率計算說明</h2>
 
-      <!-- Multiplier cards -->
-      <div class="mult-cards">
+      <!-- Formula cards -->
+      <div class="fcards">
 
-        <!-- BAM Card -->
-        <div class="mult-card">
-          <div class="mc-label">攻擊倍率 <span class="mc-tag">BAM</span></div>
-          <div class="mc-value">{{ BAM }}</div>
-          <div class="mc-steps">
+        <div class="fcard">
+          <div class="fc-name">攻擊倍率 <span class="tag">BAM</span></div>
+          <div class="fc-val" :class="BAM > 1 ? 'v-pos' : BAM < 1 ? 'v-neg' : ''">{{ BAM }}</div>
+          <div class="steps">
+            <div v-for="(s, i) in bamDetail" :key="i" class="step" :class="{ 'step-off': s.cls === 'off' }">
+              <span class="sv" :class="'sv-' + s.cls">{{ s.val }}</span>
+              <span class="sl">{{ s.label }}</span>
+            </div>
+          </div>
+          <div class="fc-eq">= {{ BAM }}</div>
+        </div>
+
+        <div class="fcard">
+          <div class="fc-name">承受倍率 <span class="tag">DRM</span></div>
+          <div class="fc-val" :class="DRM > 1 ? 'v-pos' : DRM < 1 ? 'v-neg' : ''">{{ DRM }}</div>
+          <div class="steps">
+            <div v-for="(s, i) in drmDetail" :key="i" class="step" :class="{ 'step-off': s.cls === 'off' }">
+              <span class="sv" :class="'sv-' + s.cls">{{ s.val }}</span>
+              <span class="sl">{{ s.label }}</span>
+              <span v-if="s.note" class="sn">{{ s.note }}</span>
+            </div>
+          </div>
+          <div class="fc-eq">
+            = {{ DRM }}
+            <span v-if="atkHasShura && rawDRM < 1" class="shura-note">（修羅補正）</span>
+          </div>
+        </div>
+
+        <div class="fcard fcard-cm">
+          <div class="fc-name">綜合倍率 <span class="tag">CM</span></div>
+          <div class="fc-val fc-val-lg" :class="CM > 1 ? 'v-pos' : CM < 1 ? 'v-neg' : ''">{{ CM }}</div>
+          <div class="cm-formula">BAM({{ BAM }}) + DRM({{ DRM }}) − 1</div>
+        </div>
+
+        <div class="fcard fcard-elem">
+          <div class="fc-name">屬性相剋</div>
+          <div class="fc-val fc-val-lg" :class="elemMult > 1 ? 'v-pos' : elemMult < 1 ? 'v-neg' : ''">{{ elemMult }}x</div>
+          <div class="elem-parts">
+            <span v-if="!elemDetail.length" class="ep-none">無相剋</span>
             <span
-              v-for="(s, i) in bamBreakdown" :key="i"
-              class="mc-step"
-              :class="{ inactive: !s.active, special: s.special }"
-            >
-              <span class="step-delta" :class="s.delta?.startsWith('-') ? 'neg' : s.delta === '×' ? 'dead' : 'pos'">
-                {{ s.delta }}
-              </span>
-              <span class="step-label">{{ s.label }}</span>
-              <span v-if="s.note" class="step-note">{{ s.note }}</span>
-            </span>
-          </div>
-          <div class="mc-formula">
-            = <strong>{{ BAM }}</strong>
+              v-for="(p, i) in elemDetail" :key="i"
+              class="ep"
+              :class="p.adj > 0 ? 'ep-pos' : p.adj < 0 ? 'ep-neg' : 'ep-neu'"
+            >{{ p.adj > 0 ? '+' : p.adj < 0 ? '−' : '±' }}0.2 {{ p.a }}→{{ p.d }}</span>
           </div>
         </div>
 
-        <!-- DRM Card -->
-        <div class="mult-card">
-          <div class="mc-label">受傷倍率 <span class="mc-tag">DRM</span></div>
-          <div class="mc-value">{{ DRM }}</div>
-          <div class="mc-steps">
-            <span
-              v-for="(s, i) in drmBreakdown" :key="i"
-              class="mc-step"
-              :class="{ inactive: !s.active, special: s.special }"
-            >
-              <span class="step-delta" :class="s.delta?.startsWith('-') ? 'neg' : s.delta?.startsWith('+') ? 'pos' : 'note'">
-                {{ s.delta }}
-              </span>
-              <span class="step-label">{{ s.label }}</span>
-              <span v-if="s.note" class="step-note">{{ s.note }}</span>
-            </span>
-          </div>
-          <div class="mc-formula">= <strong>{{ DRM }}</strong></div>
-        </div>
+      </div>
 
-        <!-- CM Card -->
-        <div class="mult-card cm-card">
-          <div class="mc-label">組合倍率 <span class="mc-tag">CM</span></div>
-          <div class="mc-value large" :class="CM > 1 ? 'pos' : CM < 1 ? 'neg' : ''">{{ CM }}</div>
-          <div class="mc-formula cm-formula">
-            BAM <span class="cm-op">({{ BAM }})</span>
-            + DRM <span class="cm-op">({{ DRM }})</span>
-            − 1
-            = <strong>{{ CM }}</strong>
-          </div>
-          <p class="mc-hint">普通攻擊・式神・錢標・衝撞 均使用 CM</p>
+      <!-- Final damage -->
+      <div class="final-box">
+        <div class="final-formula">
+          {{ baseDmg || 0 }} × CM({{ CM }}) × 屬性({{ elemMult }})
         </div>
-
-        <!-- Element Card -->
-        <div class="mult-card elem-card">
-          <div class="mc-label">元素倍率</div>
-          <div class="mc-value large" :class="elemMult > 1 ? 'pos' : elemMult < 1 ? 'neg' : ''">
-            {{ elemMult }}x
-          </div>
-          <div class="mc-steps">
-            <span v-for="(p, i) in elemBreakdown" :key="i" class="mc-step">
-              <span class="step-delta" :class="p.good ? 'pos' : p.bad ? 'neg' : 'note'">{{ p.text }}</span>
-              <span v-if="p.sub" class="step-note">({{ p.sub }})</span>
-            </span>
-          </div>
-          <div class="mc-formula">= <strong>{{ elemMult }}x</strong></div>
+        <div class="final-label">最終傷害</div>
+        <div class="final-num" :class="finalDmg > 0 ? 'num-hi' : ''">
+          {{ finalDmg.toLocaleString() }}
         </div>
       </div>
 
-      <!-- ─── DAMAGE TABLE ─── -->
-      <h2 class="results-title mt24">💥 傷害結果</h2>
-
-      <div class="dmg-table">
-        <div class="dmg-row header-row">
-          <span>攻擊類型</span>
-          <span class="col-formula">計算公式</span>
-          <span class="col-dmg">傷害值</span>
-        </div>
-
-        <!-- Normal Attack / Shikigami -->
-        <div class="dmg-row">
-          <span class="dmg-name">普通攻擊 / 式神</span>
-          <span class="col-formula formula-text">
-            {{ atk.baseAtk }} × <span class="f-cm">CM {{ CM }}</span> × <span class="f-em">{{ elemMult }}x</span>
-          </span>
-          <span class="col-dmg dmg-val" :class="dmg.normal < 0 ? 'neg' : ''">{{ fmt(dmg.normal) }}</span>
-        </div>
-
-        <!-- Secret Technique -->
-        <div class="dmg-row">
-          <span class="dmg-name">奧義（秘術）</span>
-          <span class="col-formula formula-text">
-            ( {{ atk.baseAtk }} × <span class="f-drm">DRM {{ DRM }}</span> × <span class="f-em">{{ elemMult }}x</span> ) − {{ def.defense }}
-          </span>
-          <span class="col-dmg dmg-val" :class="dmg.secret < 0 ? 'neg' : ''">{{ fmt(dmg.secret) }}</span>
-        </div>
-
-        <!-- Ninjutsu -->
-        <div class="dmg-row">
-          <span class="dmg-name">忍術</span>
-          <span class="col-formula formula-text">
-            {{ atk.baseMagic }} × <span class="f-drm">DRM {{ DRM }}</span> − {{ def.magicDef }}
-          </span>
-          <span class="col-dmg dmg-val" :class="dmg.ninjutsu < 0 ? 'neg' : ''">{{ fmt(dmg.ninjutsu) }}</span>
-        </div>
-
-        <!-- Money Dart -->
-        <div class="dmg-row">
-          <span class="dmg-name">錢標</span>
-          <span class="col-formula formula-text">
-            150 × <span class="f-cm">CM {{ CM }}</span>
-          </span>
-          <span class="col-dmg dmg-val" :class="dmg.moneyDart < 0 ? 'neg' : ''">{{ fmt(dmg.moneyDart) }}</span>
-        </div>
-
-        <!-- Collision -->
-        <div class="dmg-row">
-          <span class="dmg-name">
-            衝撞
-            <em class="coll-badge">{{ { normal: '通常 (30)', yaksha: '夜叉 (100)', redOgre: '紅鬼 (200)' }[collisionType] }}</em>
-          </span>
-          <span class="col-formula formula-text">
-            {{ collBase }} × <span class="f-cm">CM {{ CM }}</span>
-          </span>
-          <span class="col-dmg dmg-val" :class="dmg.collision < 0 ? 'neg' : ''">{{ fmt(dmg.collision) }}</span>
-        </div>
-
-        <!-- Poison -->
-        <div class="dmg-row">
-          <span class="dmg-name">
-            毒
-            <em class="coll-badge poison">衝撞基數 × 3，無視 DRM</em>
-          </span>
-          <span class="col-formula formula-text">
-            {{ collBase }} × <span class="f-bam">BAM {{ BAM }}</span> × 3
-          </span>
-          <span class="col-dmg dmg-val" :class="dmg.poison < 0 ? 'neg' : ''">{{ fmt(dmg.poison) }}</span>
-        </div>
-      </div>
-
-      <p class="footnote">
-        奧義/忍術傷害可為負值（防御過高時）。毒效果對變身狀態無效。所有數值向下取整。
-      </p>
     </section>
 
-    <footer class="footer">
-      <p>忍道傷害計算器 · 基於遊戲內部公式實作</p>
-    </footer>
+    <footer class="ft">忍豆風雲4工具箱 · 傷害計算</footer>
   </div>
 </template>
 
 <style scoped>
-/* ─── APP ─── */
+/* APP */
 .app {
-  max-width: 1200px;
+  max-width: 900px;
   margin: 0 auto;
-  padding: 0 0 40px;
+  padding-bottom: 48px;
 }
 
-/* ─── HEADER ─── */
-.header {
-  background: linear-gradient(135deg, #1a0508 0%, #0c0c14 60%);
-  border-bottom: 1px solid #3a1a1a;
-  padding: 28px 24px 22px;
+/* HEADER */
+.hd {
+  background: linear-gradient(135deg, #0a0a12 0%, #12101e 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 18px 20px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.hd-brand {
+  font-size: 0.72rem;
+  color: var(--text3);
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+}
+.hd-title {
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 28px rgba(244, 192, 48, 0.35);
+}
+
+/* BASE DAMAGE */
+.base-sec {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 18px;
+}
+.base-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.base-lbl {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text2);
+  white-space: nowrap;
+}
+.base-inp {
+  width: 140px;
+  font-size: 1.05rem;
+  font-weight: 600;
   text-align: center;
 }
-
-.header h1 {
-  font-size: 2rem;
-  font-weight: 700;
-  letter-spacing: 0.25em;
-  color: var(--gold);
-  text-shadow: 0 0 20px rgba(244, 192, 48, 0.4);
+.presets {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
-
-.subtitle {
-  color: var(--text3);
-  font-size: 0.85rem;
-  letter-spacing: 0.15em;
-  margin-top: 4px;
+.pre-btn {
+  padding: 4px 13px;
+  border-radius: 20px;
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  color: var(--text2);
+  font-size: 0.78rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.12s;
 }
+.pre-btn:hover { border-color: var(--gold); color: var(--gold); }
+.rst-btn { border-color: var(--border); color: var(--text3); }
+.rst-btn:hover { border-color: var(--red); color: var(--red); }
 
-/* ─── PANELS ─── */
-.panels-wrap {
+/* PANELS */
+.panels {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1px;
   background: var(--border);
 }
-
-@media (max-width: 768px) {
-  .panels-wrap {
-    grid-template-columns: 1fr;
-  }
+@media (max-width: 600px) {
+  .panels { grid-template-columns: 1fr; }
 }
 
 .panel {
   background: var(--surface);
-  padding: 20px 18px;
+  padding: 16px 15px;
 }
 
-.panel-head {
+.ptitle {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-bottom: 14px;
+  gap: 6px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 16px;
+  margin-bottom: 14px;
+  letter-spacing: 0.04em;
 }
+.ptitle-icon { font-size: 0.9rem; }
+.atk-title { color: var(--red); }
+.def-title { color: var(--blue); }
 
-.panel-icon {
-  font-size: 1.2rem;
+.ptag {
+  margin-left: auto;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: 4px;
 }
+.atk-tag { background: rgba(230,57,70,0.12); border: 1px solid rgba(230,57,70,0.3); color: var(--red); }
+.def-tag { background: rgba(116,185,255,0.12); border: 1px solid rgba(116,185,255,0.3); color: var(--blue); }
 
-.panel-head h2 {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: 0.05em;
-}
-
-.panel-atk .panel-head h2 { color: var(--red); }
-.panel-def .panel-head h2 { color: var(--blue); }
-
-/* ─── BLOCK ─── */
-.block {
-  margin-bottom: 18px;
-}
-
-.block-title {
-  font-size: 0.72rem;
-  font-weight: 600;
+/* PBLK */
+.pblk { margin-bottom: 16px; }
+.pblk:last-child { margin-bottom: 0; }
+.pblk-hd {
+  font-size: 0.65rem;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--text3);
   margin-bottom: 8px;
 }
 
-/* ─── BUFF BUTTONS ─── */
-.buff-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
+/* STATUS BUTTONS */
+.btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
 
-.buff-btn {
-  padding: 5px 12px;
-  border-radius: 20px;
+.sbtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 6px 11px 5px;
+  border-radius: 7px;
   border: 1px solid var(--border2);
   background: var(--surface2);
   color: var(--text2);
-  font-size: 0.85rem;
   cursor: pointer;
-  transition: all 0.15s;
   font-family: inherit;
-  position: relative;
+  transition: all 0.13s;
 }
+.sbtn:hover { border-color: var(--text3); color: var(--text); }
+.sb-name { font-size: 0.83rem; font-weight: 500; }
+.sb-val  { font-size: 0.63rem; color: var(--text3); font-variant-numeric: tabular-nums; }
 
-.buff-btn:hover {
-  border-color: var(--text3);
-  color: var(--text);
-}
+.sbtn.on { opacity: 1; }
+.sbtn.dim { opacity: 0.35; text-decoration: line-through; }
 
-.buff-btn.active {
-  background: rgba(230, 57, 70, 0.15);
-  border-color: var(--red);
-  color: var(--red);
-  font-weight: 600;
-}
+.sbtn.atk-act { background: rgba(230,57,70,0.1); border-color: var(--red); color: var(--red); }
+.sbtn.atk-act .sb-val { color: rgba(230,57,70,0.55); }
 
-.buff-btn.active.wrath {
-  background: rgba(244, 192, 48, 0.15);
-  border-color: var(--gold);
+.sbtn.def-act { background: rgba(116,185,255,0.1); border-color: var(--blue); color: var(--blue); }
+.sbtn.def-act .sb-val { color: rgba(116,185,255,0.55); }
+
+.sbtn.grn-act { background: rgba(82,183,136,0.1); border-color: var(--green); color: var(--green); }
+.sbtn.grn-act .sb-val { color: rgba(82,183,136,0.55); }
+
+.sbtn.wrath { background: rgba(244,192,48,0.1); border-color: var(--gold); color: var(--gold); }
+.sbtn.wrath .sb-val { color: rgba(244,192,48,0.55); }
+
+/* WARN */
+.warn {
+  margin-top: 7px;
+  font-size: 0.72rem;
   color: var(--gold);
-}
-
-.buff-btn.dimmed {
-  opacity: 0.45;
-  text-decoration: line-through;
-}
-
-.warn-msg {
-  font-size: 0.75rem;
-  color: var(--gold);
-  margin-top: 6px;
+  background: rgba(244,192,48,0.06);
+  border-left: 2px solid rgba(244,192,48,0.4);
   padding: 4px 8px;
-  background: rgba(244, 192, 48, 0.07);
-  border-radius: 4px;
-  border-left: 2px solid var(--gold);
+  border-radius: 0 4px 4px 0;
 }
 
-/* ─── TOGGLE LABEL ─── */
-.toggle-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  font-size: 0.85rem;
-  color: var(--text2);
-}
+/* ELEMENT GRID */
+.egrid { display: flex; flex-wrap: wrap; gap: 5px; }
+.mt4 { margin-top: 5px; }
 
-.toggle-label em {
-  color: var(--text3);
-  font-style: normal;
-  font-size: 0.78rem;
-}
-
-.mt8 { margin-top: 8px; }
-.mt4 { margin-top: 4px; }
-
-/* ─── ELEMENT GRID ─── */
-.elem-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.elem-btn {
-  padding: 4px 10px;
-  border-radius: 6px;
+.ebtn {
+  padding: 3px 8px;
+  border-radius: 5px;
   border: 1px solid var(--border);
   background: var(--surface2);
   color: var(--text2);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   cursor: pointer;
-  transition: all 0.12s;
   font-family: inherit;
+  transition: all 0.1s;
 }
-
-.elem-btn:hover {
-  border-color: var(--text3);
-  color: var(--text);
-}
-
-.elem-btn.selected {
-  background: color-mix(in srgb, var(--ec) 15%, transparent);
+.ebtn:hover { border-color: var(--text3); color: var(--text); }
+.ebtn.ebtn-on {
+  background: color-mix(in srgb, var(--ec) 14%, transparent);
   border-color: var(--ec);
   color: var(--ec);
   font-weight: 600;
 }
+.ebtn.ebtn-same { opacity: 0.3; pointer-events: none; }
 
-.elem-preview {
+.dual-lbl {
   display: flex;
-  gap: 5px;
+  align-items: center;
+  gap: 6px;
   margin-top: 8px;
+  font-size: 0.78rem;
+  color: var(--text2);
+  cursor: pointer;
 }
 
-.elem-badge {
+.chips { display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
+.chip {
   padding: 2px 10px;
   border-radius: 12px;
   border: 1px solid;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 600;
 }
 
-/* ─── INPUTS ─── */
-.input-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.input-label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 0.8rem;
-  color: var(--text2);
-}
-
-/* ─── COLLISION BUTTONS ─── */
-.coll-row {
-  display: flex;
-  gap: 6px;
-}
-
-.coll-btn {
-  flex: 1;
-  padding: 6px 4px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text2);
-  font-size: 0.82rem;
-  cursor: pointer;
-  transition: all 0.15s;
-  font-family: inherit;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-
-.coll-btn:hover {
-  border-color: var(--text3);
-}
-
-.coll-btn.active {
-  background: rgba(116, 185, 255, 0.12);
-  border-color: var(--blue);
-  color: var(--blue);
-}
-
-.coll-base {
-  font-size: 0.7rem;
-  opacity: 0.7;
-}
-
-/* ─── ELEMENT MATRIX TABLE ─── */
-.matrix-table {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  font-size: 0.78rem;
-}
-
-.matrix-row {
-  display: grid;
-  grid-template-columns: 50px 1fr 1fr;
-  gap: 6px;
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--border);
-  align-items: center;
-}
-
-.matrix-row:last-child { border-bottom: none; }
-
-.matrix-header {
-  background: var(--surface2);
-  color: var(--text3);
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.matrix-elem {
-  font-weight: 600;
-}
-
-.matrix-strong, .matrix-weak {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-}
-
-.matrix-badge {
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.05);
-}
-
-.matrix-none { color: var(--text3); }
-
-/* ─── RESULTS SECTION ─── */
+/* RESULTS */
 .results {
   background: var(--surface);
-  margin-top: 1px;
-  padding: 24px 20px;
+  border-top: 1px solid var(--border);
+  padding: 18px 16px;
 }
 
-.results-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text2);
-  letter-spacing: 0.08em;
-  margin-bottom: 16px;
-}
-
-.mt24 { margin-top: 24px; }
-
-/* ─── MULTIPLIER CARDS ─── */
-.mult-cards {
+/* FORMULA CARDS */
+.fcards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 10px;
-  margin-bottom: 24px;
+  margin-bottom: 14px;
+}
+@media (max-width: 480px) {
+  .fcards { grid-template-columns: 1fr 1fr; }
 }
 
-.mult-card {
+.fcard {
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 14px 14px 12px;
+  padding: 12px 12px 10px;
 }
+.fcard-cm   { border-color: rgba(162,155,254,0.25); }
+.fcard-elem { border-color: rgba(244,192,48,0.2); }
 
-.cm-card {
-  border-color: rgba(230, 57, 70, 0.35);
-  background: rgba(230, 57, 70, 0.04);
-}
-
-.elem-card {
-  border-color: rgba(244, 192, 48, 0.25);
-}
-
-.mc-label {
-  font-size: 0.72rem;
+.fc-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.65rem;
   color: var(--text3);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin-bottom: 4px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
-
-.mc-tag {
+.tag {
   background: var(--border);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 0.65rem;
-  letter-spacing: 0.05em;
+  color: var(--text3);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.58rem;
 }
 
-.mc-value {
-  font-size: 1.5rem;
+.fc-val {
+  font-size: 1.55rem;
   font-weight: 700;
   color: var(--text);
-  margin: 4px 0 8px;
+  margin: 2px 0 8px;
+  font-variant-numeric: tabular-nums;
 }
+.fc-val-lg { font-size: 2rem; }
+.v-pos { color: var(--green); }
+.v-neg { color: var(--red); }
 
-.mc-value.large {
-  font-size: 2rem;
-}
-
-.mc-value.pos { color: var(--green); }
-.mc-value.neg { color: var(--red); }
-
-.mc-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 6px;
-  font-size: 0.78rem;
-}
-
-.mc-step {
+/* STEPS */
+.steps { display: flex; flex-direction: column; gap: 3px; margin-bottom: 7px; }
+.step {
   display: flex;
   align-items: center;
   gap: 5px;
+  font-size: 0.74rem;
   color: var(--text2);
 }
+.step-off { color: var(--text3); text-decoration: line-through; opacity: 0.45; }
 
-.mc-step.inactive {
-  color: var(--text3);
-  text-decoration: line-through;
-  opacity: 0.6;
-}
+.sv { font-weight: 700; min-width: 38px; font-size: 0.74rem; font-variant-numeric: tabular-nums; }
+.sv-pos   { color: var(--green); }
+.sv-neg   { color: var(--red); }
+.sv-off   { color: var(--text3); }
+.sv-shura { color: var(--purple); }
+.sl { font-weight: 500; }
+.sn { font-size: 0.65rem; color: var(--text3); }
 
-.mc-step.special {
-  color: var(--purple);
-  font-style: italic;
-}
-
-.step-delta {
-  font-weight: 700;
-  min-width: 32px;
-  font-size: 0.8rem;
-}
-.step-delta.pos { color: var(--green); }
-.step-delta.neg { color: var(--red); }
-.step-delta.dead { color: var(--text3); }
-.step-delta.note { color: var(--text3); }
-
-.step-label {
-  font-weight: 500;
-}
-
-.step-note {
-  color: var(--text3);
+.fc-eq {
   font-size: 0.72rem;
-}
-
-.mc-formula {
-  font-size: 0.78rem;
   color: var(--text3);
   padding-top: 6px;
   border-top: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
 }
+.shura-note { color: var(--purple); font-size: 0.65rem; }
+.cm-formula { font-size: 0.74rem; color: var(--text2); font-family: 'Courier New', monospace; margin-top: 4px; }
 
-.mc-formula strong { color: var(--text2); }
+/* ELEM PARTS */
+.elem-parts { display: flex; flex-direction: column; gap: 3px; }
+.ep-none { font-size: 0.72rem; color: var(--text3); }
+.ep { font-size: 0.72rem; font-weight: 600; }
+.ep-pos { color: var(--green); }
+.ep-neg { color: var(--red); }
+.ep-neu { color: var(--text3); }
 
-.cm-formula {
-  font-size: 0.82rem;
-  color: var(--text2);
-}
-
-.cm-op { color: var(--text3); }
-
-.mc-hint {
-  font-size: 0.7rem;
-  color: var(--text3);
-  margin-top: 4px;
-}
-
-/* ─── DAMAGE TABLE ─── */
-.dmg-table {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-
-.dmg-row {
-  display: grid;
-  grid-template-columns: 1fr 2fr auto;
-  gap: 12px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-  align-items: center;
-  transition: background 0.1s;
-}
-
-.dmg-row:last-child { border-bottom: none; }
-
-.dmg-row:hover:not(.header-row) {
-  background: rgba(255,255,255,0.02);
-}
-
-.header-row {
+/* FINAL DAMAGE */
+.final-box {
   background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.final-formula {
+  font-size: 0.78rem;
+  color: var(--text3);
+  font-family: 'Courier New', monospace;
+}
+.final-label {
   font-size: 0.7rem;
   color: var(--text3);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.18em;
   font-weight: 600;
 }
-
-.dmg-name {
-  font-size: 0.88rem;
-  font-weight: 500;
-  color: var(--text);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+.final-num {
+  font-size: 3.2rem;
+  font-weight: 800;
+  color: var(--text2);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: -0.02em;
 }
+.num-hi { color: var(--gold); }
 
-.col-formula {
-  font-size: 0.78rem;
-  color: var(--text3);
-}
-
-.col-dmg {
-  text-align: right;
-  min-width: 70px;
-}
-
-.formula-text {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 3px;
-}
-
-.f-cm    { color: var(--red);    font-weight: 600; }
-.f-drm   { color: var(--blue);   font-weight: 600; }
-.f-bam   { color: var(--gold);   font-weight: 600; }
-.f-em    { color: var(--gold);   font-weight: 600; }
-
-.dmg-val {
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: var(--green);
-}
-
-.dmg-val.neg { color: var(--red); }
-
-.coll-badge {
-  font-style: normal;
-  font-size: 0.7rem;
-  color: var(--blue);
-  background: rgba(116, 185, 255, 0.1);
-  padding: 1px 6px;
-  border-radius: 4px;
-  border: 1px solid rgba(116, 185, 255, 0.25);
-}
-
-.coll-badge.poison {
-  color: var(--green);
-  background: rgba(82, 183, 136, 0.1);
-  border-color: rgba(82, 183, 136, 0.25);
-}
-
-.footnote {
-  margin-top: 12px;
-  font-size: 0.74rem;
-  color: var(--text3);
-  line-height: 1.6;
-}
-
-/* ─── FOOTER ─── */
-.footer {
-  background: var(--surface);
-  border-top: 1px solid var(--border);
+/* FOOTER */
+.ft {
   text-align: center;
   padding: 16px;
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   color: var(--text3);
-}
-
-/* ─── RESPONSIVE ─── */
-@media (max-width: 600px) {
-  .input-grid { grid-template-columns: 1fr; }
-
-  .dmg-row {
-    grid-template-columns: 1fr auto;
-    row-gap: 2px;
-  }
-  .col-formula { grid-column: 1 / -1; }
-
-  .mult-cards { grid-template-columns: 1fr 1fr; }
+  border-top: 1px solid var(--border);
 }
 </style>
