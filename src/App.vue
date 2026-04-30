@@ -6,7 +6,7 @@ import LuckyDraw from './components/LuckyDraw.vue'
 const activeTab = ref('lucky')
 const tabs = [
   { key: 'damage', label: '傷害計算' },
-  { key: 'lucky',  label: '公會戰福袋' },
+  { key: 'lucky',  label: '公會戰福袋抽籤' },
 ]
 </script>
 

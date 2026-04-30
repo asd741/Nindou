@@ -317,11 +317,10 @@ async function spin() {
             :title="lot.selected ? '點擊移出轉盤' : '點擊加入轉盤'"
             @click="toggleSelect(lot)"
           >
-            <button class="stick-del" @click.stop="deleteLot(lot.id)">×</button>
             <span v-if="getStatus(lot.statusId)" class="stick-dot"
               :style="{ background: getStatus(lot.statusId).color }"></span>
             <span class="stick-name">{{ lot.text }}</span>
-            <div class="stick-grain"></div>
+            <button class="stick-del" @click.stop="deleteLot(lot.id)">×</button>
           </div>
         </div>
 
@@ -365,21 +364,30 @@ async function spin() {
 
 .ld-body {
   display: grid;
-  grid-template-columns: 1fr 220px;
+  grid-template-columns: 1fr 280px;
   gap: 1px;
   background: var(--border);
   min-height: 560px;
 }
 
-@media (max-width: 680px) {
-  .ld-body { grid-template-columns: 1fr; }
+@media (max-width: 820px) {
+  .ld-body { grid-template-columns: 1fr 220px; }
+}
+
+@media (max-width: 600px) {
+  .ld-body {
+    grid-template-columns: 1fr;
+    min-height: unset;
+  }
+  .stick-aside { order: -1; max-height: 220px; }
+  .ld-left     { order: 1; }
 }
 
 /* ── LEFT ── */
 .ld-left {
   display: flex;
   flex-direction: column;
-  background: var(--surface);
+  background: var(--bg);
 }
 
 /* WHEEL SECTION */
@@ -394,8 +402,8 @@ async function spin() {
 
 .wheel-frame {
   position: relative;
-  width: 300px;
-  height: 300px;
+  width: min(300px, calc(100vw - 80px));
+  height: min(300px, calc(100vw - 80px));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -462,8 +470,8 @@ async function spin() {
 .wheel-svg {
   position: relative;
   z-index: 10;
-  width: 300px;
-  height: 300px;
+  width: 100%;
+  height: 100%;
 }
 .wheel-svg svg { width: 100%; height: 100%; }
 
@@ -501,7 +509,7 @@ async function spin() {
   opacity: 0.38; cursor: not-allowed; transform: none;
 }
 
-.part-info { font-size: 0.76rem; }
+.part-info { font-size: 0.9rem; }
 .part-count { color: var(--text3); }
 .part-empty { color: var(--text3); font-style: italic; }
 
@@ -513,10 +521,9 @@ async function spin() {
 }
 
 .result-hd {
-  font-size: 0.65rem;
+  font-size: 0.8rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.12em;
   color: var(--text3);
   margin-bottom: 14px;
 }
@@ -541,8 +548,8 @@ async function spin() {
   margin-bottom: 16px;
   box-shadow: 0 0 28px rgba(244,192,48,0.08);
 }
-.win-sparkle { font-size: 1.5rem; }
-.win-name { font-size: 1.75rem; font-weight: 800; color: var(--text); }
+.win-sparkle { font-size: 1.8rem; }
+.win-name { font-size: 2rem; font-weight: 800; color: var(--text); }
 .win-badge {
   padding: 2px 12px; border-radius: 10px; border: 1px solid;
   font-size: 0.75rem; font-weight: 600;
@@ -556,199 +563,176 @@ async function spin() {
 .assign-btn:hover { opacity: 0.75; }
 .assign-btn.on { background: var(--sc); color: #fff; }
 
-.no-result { padding: 20px; text-align: center; color: var(--text3); font-size: 0.82rem; }
+.no-result { padding: 20px; text-align: center; color: var(--text3); font-size: 0.95rem; }
 .spinning-text { color: var(--gold); animation: pulse 1s ease-in-out infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
 
 /* History */
 .history { margin-top: 4px; }
 .hist-hd {
-  font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.14em;
+  font-size: 0.75rem; letter-spacing: 0.1em;
   color: var(--text3); margin-bottom: 8px; padding-bottom: 5px; border-bottom: 1px solid var(--border);
 }
 .hist-row {
-  display: flex; align-items: center; gap: 8px; padding: 5px 0;
-  border-bottom: 1px solid var(--border); font-size: 0.78rem; color: var(--text2);
+  display: flex; align-items: center; gap: 8px; padding: 6px 0;
+  border-bottom: 1px solid var(--border); font-size: 0.9rem; color: var(--text2);
 }
 .hist-row.latest { color: var(--gold); }
-.hist-time { font-size: 0.68rem; color: var(--text3); font-variant-numeric: tabular-nums; }
+.hist-time { font-size: 0.78rem; color: var(--text3); font-variant-numeric: tabular-nums; }
 .hist-name { flex: 1; font-weight: 600; }
-.hist-status { font-size: 0.68rem; }
+.hist-status { font-size: 0.78rem; }
 
 /* ── RIGHT ASIDE ── */
 .stick-aside {
   background: var(--surface);
   display: flex;
   flex-direction: column;
-  padding: 12px 10px;
+  padding: 14px 12px;
   overflow-y: auto;
-  max-height: 560px;
+  max-height: 680px;
 }
 
 .aside-hd {
-  display: flex; align-items: center; gap: 6px; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 6px; margin-bottom: 12px;
 }
-.aside-title { font-size: 0.88rem; font-weight: 700; color: var(--text); }
+.aside-title { font-size: 1rem; font-weight: 700; color: var(--text); }
 .aside-count {
-  font-size: 0.65rem; color: var(--text3); background: var(--surface2);
-  border: 1px solid var(--border); padding: 1px 7px; border-radius: 9px;
+  font-size: 0.78rem; color: var(--text3); background: var(--surface2);
+  border: 1px solid var(--border); padding: 1px 8px; border-radius: 9px;
 }
 .aside-acts { display: flex; gap: 4px; margin-left: auto; }
 .aside-act {
-  padding: 2px 7px; border-radius: 8px; border: 1px solid var(--border2);
-  background: var(--surface2); color: var(--text3); font-size: 0.65rem;
+  padding: 3px 9px; border-radius: 8px; border: 1px solid var(--border2);
+  background: var(--surface2); color: var(--text3); font-size: 0.75rem;
   font-family: inherit; cursor: pointer; transition: all 0.12s;
 }
 .aside-act:hover { color: var(--text); border-color: var(--text3); }
 
-.lot-add-row { display: flex; gap: 5px; margin-bottom: 10px; }
+.lot-add-row { display: flex; gap: 6px; margin-bottom: 12px; }
 .lot-inp {
   flex: 1; min-width: 0; background: var(--surface2); border: 1px solid var(--border);
-  border-radius: var(--radius); color: var(--text); font-size: 0.8rem; padding: 5px 8px;
+  border-radius: var(--radius); color: var(--text); font-size: 0.9rem; padding: 6px 10px;
   outline: none; font-family: inherit; transition: border-color 0.15s;
 }
 .lot-inp:focus { border-color: var(--gold); }
 .lot-add-btn {
-  padding: 5px 10px; border-radius: var(--radius); border: 1px solid var(--border2);
-  background: var(--surface2); color: var(--text2); font-size: 0.78rem;
+  padding: 6px 12px; border-radius: var(--radius); border: 1px solid var(--border2);
+  background: var(--surface2); color: var(--text2); font-size: 0.88rem;
   font-family: inherit; cursor: pointer; transition: all 0.12s; white-space: nowrap;
 }
 .lot-add-btn:hover { border-color: var(--gold); color: var(--gold); }
 
-/* ── STICKS ── */
+/* ── STICKS（冰棒棍，水平橫放）── */
 .sticks-grid {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  gap: 7px;
   padding: 2px 0 10px;
-  align-content: flex-start;
 }
-.sticks-empty { font-size: 0.75rem; color: var(--text3); padding: 8px 0; width: 100%; }
+.sticks-empty { font-size: 0.88rem; color: var(--text3); padding: 8px 0; }
 
 .stick {
   position: relative;
-  width: 42px;
-  min-height: 112px;
+  width: 100%;
+  height: 32px;
   cursor: pointer;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  transition: transform 0.18s, filter 0.18s;
+  padding: 0 30px 0 10px;
+  gap: 8px;
+  border-radius: 16px;
+  background: linear-gradient(
+    to bottom,
+    #f8efce 0%, #e8d48c 35%, #d9c06e 58%, #c9a84c 100%
+  );
+  border: 1px solid #b8902c;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.35), inset 0 1px rgba(255,255,255,0.55);
+  transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
   user-select: none;
-  flex-shrink: 0;
+  overflow: hidden;
 }
 
-/* Stick top cap */
+/* 左側高光，增加立體感 */
 .stick::before {
   content: '';
   position: absolute;
-  top: 0; left: 50%; transform: translateX(-50%);
-  width: 36px; height: 18px;
-  background: linear-gradient(
-    to right,
-    #241008 0%, #4a2010 30%, #7a3a18 50%, #4a2010 70%, #241008 100%
-  );
-  border-radius: 10px 10px 2px 2px;
-  border: 1px solid #180a04;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-  z-index: 1;
+  left: 14px; top: 5px; bottom: 5px;
+  width: 2px; border-radius: 2px;
+  background: rgba(255,255,255,0.45);
+  pointer-events: none;
 }
 
-/* Stick body */
+/* 橫向木紋 */
 .stick::after {
   content: '';
   position: absolute;
-  top: 12px; left: 0; right: 0; bottom: 0;
-  background: linear-gradient(
-    to right,
-    #3d1a08 0%, #6b3010 8%, #a85c2a 24%,
-    #d47a44 42%, #e08a50 50%, #d47a44 58%,
-    #a85c2a 76%, #6b3010 92%, #3d1a08 100%
-  );
-  border-radius: 3px 3px 7px 7px;
-  border: 1px solid #281208;
-  box-shadow:
-    inset 2px 0 5px rgba(255,180,80,0.1),
-    inset -2px 0 5px rgba(0,0,0,0.2),
-    2px 4px 10px rgba(0,0,0,0.55);
-  z-index: 0;
-}
-
-/* Wood grain lines */
-.stick-grain {
-  position: absolute;
-  top: 14px; left: 12px; right: 12px; bottom: 4px;
-  z-index: 1;
+  inset: 0; border-radius: 16px;
   background: repeating-linear-gradient(
-    180deg,
-    transparent 0px,
-    transparent 5px,
-    rgba(0,0,0,0.04) 5px,
-    rgba(0,0,0,0.04) 6px
+    90deg,
+    transparent 0px, transparent 5px,
+    rgba(0,0,0,0.022) 5px, rgba(0,0,0,0.022) 6px
   );
-  border-radius: 2px;
   pointer-events: none;
 }
 
 .stick-name {
   position: relative;
   z-index: 2;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  font-size: 0.8rem;
-  color: #230e04;
+  font-size: 0.95rem;
+  color: #3d2200;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-shadow: 0 1px 0 rgba(255,200,120,0.4);
-  max-height: 74px;
+  flex: 1;
   overflow: hidden;
-  margin-top: 10px;
-  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+}
+
+.stick-dot {
+  position: relative;
+  z-index: 3;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.25);
+  flex-shrink: 0;
 }
 
 .stick-del {
-  position: absolute; top: 2px; right: 0px; z-index: 20;
-  width: 15px; height: 15px; border-radius: 50%; border: none;
-  background: rgba(220, 50, 60, 0.75); color: white; font-size: 0.58rem;
-  cursor: pointer; display: none; align-items: center; justify-content: center;
+  position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
+  z-index: 20;
+  width: 18px; height: 18px; border-radius: 50%; border: none;
+  background: rgba(180, 30, 40, 0.35); color: rgba(255,255,255,0.55);
+  font-size: 0.65rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
   line-height: 1; padding: 0; font-family: inherit;
+  transition: background 0.15s, color 0.15s;
 }
-.stick:hover .stick-del { display: flex; }
-
-.stick-dot {
-  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
-  width: 7px; height: 7px; border-radius: 50%; z-index: 3;
-  border: 1px solid rgba(0,0,0,0.35);
+.stick:hover .stick-del {
+  background: rgba(220, 50, 60, 0.88);
+  color: #fff;
 }
 
-.stick:hover { transform: translateY(-5px) scale(1.05); filter: brightness(1.1); }
+.stick:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.38), inset 0 1px rgba(255,255,255,0.55);
+}
 
-/* SELECTED (in drum) */
+/* SELECTED（已加入轉盤）*/
+.stick.stick-on {
+  background: linear-gradient(
+    to bottom,
+    #fff8b8 0%, #f4cc40 35%, #e0a800 58%, #c88a00 100%
+  );
+  border-color: #c89000;
+  box-shadow: 0 0 16px rgba(244,192,48,0.45), 0 2px 6px rgba(0,0,0,0.3), inset 0 1px rgba(255,255,255,0.45);
+}
 .stick.stick-on::before {
-  background: linear-gradient(
-    to right,
-    #1a0c00 0%, #2e1800 30%, #4e2c00 50%, #2e1800 70%, #1a0c00 100%
-  );
-  border-color: rgba(244,192,48,0.45);
-}
-.stick.stick-on::after {
-  background: linear-gradient(
-    to right,
-    #160a00 0%, #281400 8%, #401e00 24%,
-    #542800 42%, #5e2e00 50%, #542800 58%,
-    #401e00 76%, #281400 92%, #160a00 100%
-  );
-  border-color: rgba(244,192,48,0.45);
-  box-shadow:
-    0 0 16px rgba(244,192,48,0.18),
-    0 0 6px rgba(244,192,48,0.1),
-    inset 0 0 12px rgba(244,192,48,0.05),
-    2px 4px 10px rgba(0,0,0,0.65);
+  background: rgba(255,255,255,0.5);
 }
 .stick.stick-on .stick-name {
-  color: var(--gold);
-  text-shadow: 0 0 10px rgba(244,192,48,0.45), 0 1px 0 rgba(0,0,0,0.3);
+  color: #3d2000;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.25);
 }
 
 /* STATUS CONFIG */
@@ -758,7 +742,7 @@ async function spin() {
   border-top: 1px solid var(--border);
 }
 .status-sum {
-  font-size: 0.7rem; color: var(--text3); cursor: pointer; padding: 4px 0;
+  font-size: 0.82rem; color: var(--text3); cursor: pointer; padding: 4px 0;
   list-style: none; user-select: none; letter-spacing: 0.04em;
 }
 .status-sum:hover { color: var(--text2); }
@@ -766,32 +750,32 @@ async function spin() {
 .status-add { display: flex; gap: 4px; margin-bottom: 7px; align-items: center; }
 .s-inp {
   flex: 1; min-width: 0; background: var(--surface2); border: 1px solid var(--border);
-  border-radius: var(--radius); color: var(--text); font-size: 0.75rem;
-  padding: 4px 6px; outline: none; font-family: inherit;
+  border-radius: var(--radius); color: var(--text); font-size: 0.85rem;
+  padding: 5px 8px; outline: none; font-family: inherit;
 }
 .s-inp:focus { border-color: var(--gold); }
-.s-inp.sm { max-width: 80px; flex: none; }
+.s-inp.sm { max-width: 90px; flex: none; }
 .c-inp {
-  width: 28px; height: 27px; border: 1px solid var(--border); border-radius: 4px;
+  width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 4px;
   background: var(--surface2); cursor: pointer; padding: 1px; flex-shrink: 0;
 }
 .s-add-btn {
-  width: 26px; height: 27px; border-radius: var(--radius); border: 1px solid rgba(244,192,48,0.3);
-  background: rgba(244,192,48,0.06); color: var(--gold); font-size: 1rem;
+  width: 28px; height: 30px; border-radius: var(--radius); border: 1px solid rgba(244,192,48,0.3);
+  background: rgba(244,192,48,0.06); color: var(--gold); font-size: 1.1rem;
   font-family: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .s-add-btn:hover { background: rgba(244,192,48,0.14); }
-.s-list { display: flex; flex-direction: column; gap: 4px; }
-.s-empty { font-size: 0.72rem; color: var(--text3); }
+.s-list { display: flex; flex-direction: column; gap: 5px; }
+.s-empty { font-size: 0.82rem; color: var(--text3); }
 .s-row {
   display: flex; align-items: center; gap: 5px; background: var(--surface2);
-  border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 6px;
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 8px;
 }
-.s-dot2 { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.s-label { flex: 1; font-size: 0.75rem; color: var(--text2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s-dot2 { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.s-label { flex: 1; font-size: 0.85rem; color: var(--text2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s-btn {
-  width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border);
-  background: transparent; color: var(--text3); font-size: 0.7rem; cursor: pointer;
+  width: 24px; height: 24px; border-radius: 4px; border: 1px solid var(--border);
+  background: transparent; color: var(--text3); font-size: 0.78rem; cursor: pointer;
   font-family: inherit; display: flex; align-items: center; justify-content: center;
   flex-shrink: 0; transition: all 0.12s; padding: 0;
 }
@@ -799,4 +783,16 @@ async function spin() {
 .s-btn.del:hover { border-color: var(--red); color: var(--red); }
 .s-btn.ok { border-color: rgba(82,183,136,0.35); color: var(--green); }
 .s-btn.ok:hover { background: rgba(82,183,136,0.1); }
+
+/* ── RWD 手機版補強 ── */
+@media (max-width: 600px) {
+  .wheel-sec { padding: 16px 10px 14px; gap: 12px; }
+  .spin-btn  { padding: 11px 40px; font-size: 1rem; }
+  .stick-aside { max-height: 220px; padding: 12px 10px; }
+  .result-sec { padding: 14px 16px; }
+}
+@media (max-width: 400px) {
+  .spin-btn { padding: 10px 30px; font-size: 0.95rem; }
+  .win-name { font-size: 1.6rem; }
+}
 </style>
