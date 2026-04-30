@@ -21,8 +21,12 @@ const ELEM_COLOR = {
   '地': '#b07b45', '光': '#ffd700', '闇': '#b08fff', '修羅': '#e63946', '毒': '#2dd4bf', '木': '#52b788',
 }
 const ADJ = {
-  '炎':  { '冰': -0.2 },
-  '冰':  { '炎': 0.2, '毒': 0.2 },
+  '無':  { '修羅': 0.2, '毒': 0.2, '木': 0.2, '光': -0.2 },
+  '炎':  { '風': 0.2, '毒': 0.2, '木': 0.2, '炎': -0.2, '冰': -0.2 },
+  '冰':  { '炎': 0.2, '毒': 0.2, '木': 0.2, '冰': -0.2, '地': -0.2 },
+  '風':  { '雷': 0.2, '毒': 0.2, '木': 0.2, '炎': -0.2, '風': -0.2 },
+  '雷':  { '地': 0.2, '毒': 0.2, '木': 0.2, '風': -0.2, '雷': -0.2 },
+  '地':  { '冰': 0.2, '毒': 0.2, '木': 0.2, '雷': -0.2, '地': -0.2 },
   '光':  { '闇': 0.2, '修羅': 0.2, '毒': 0.2, '無': -0.2, '光': -0.2 },
   '闇':  { '無': 0.2, '光': 0.2, '木': 0.2, '闇': -0.2, '修羅': -0.2 },
   '修羅': { '無': 0.2, '毒': 0.2, '木': 0.2, '闇': -0.2, '修羅': -0.2 },
@@ -80,15 +84,13 @@ const eDef = computed(() => {
 })
 
 const atkAttrs = computed(() => {
-  const a = []
-  if (atk.attr1 !== '無') a.push(atk.attr1)
-  if (atk.useDual && atk.attr2 !== '無' && atk.attr2 !== atk.attr1) a.push(atk.attr2)
+  const a = [atk.attr1]
+  if (atk.useDual && atk.attr2 !== atk.attr1) a.push(atk.attr2)
   return a
 })
 const defAttrs = computed(() => {
-  const a = []
-  if (def.attr1 !== '無') a.push(def.attr1)
-  if (def.useDual && def.attr2 !== '無' && def.attr2 !== def.attr1) a.push(def.attr2)
+  const a = [def.attr1]
+  if (def.useDual && def.attr2 !== def.attr1) a.push(def.attr2)
   return a
 })
 
@@ -123,7 +125,7 @@ const DRM = computed(() => {
 const CM = computed(() => r2(BAM.value + DRM.value - 1))
 
 const elemMult = computed(() => {
-  if (!elemApplies.value || !atkAttrs.value.length || !defAttrs.value.length) return 1
+  if (!elemApplies.value) return 1
   let adj = 0
   for (const a of atkAttrs.value)
     for (const d of defAttrs.value)
@@ -222,11 +224,13 @@ const drmDetail = computed(() => {
 })
 
 const elemDetail = computed(() => {
-  if (!elemApplies.value || !atkAttrs.value.length || !defAttrs.value.length) return []
+  if (!elemApplies.value) return []
   const result = []
   for (const a of atkAttrs.value)
-    for (const d of defAttrs.value)
-      result.push({ a, d, adj: getAdj(a, d) })
+    for (const d of defAttrs.value) {
+      const adj = getAdj(a, d)
+      if (adj !== 0) result.push({ a, d, adj })
+    }
   return result
 })
 
@@ -363,9 +367,9 @@ function resetAll() {
               @click="atk.attr2 = e"
             >{{ e }}</button>
           </div>
-          <div v-if="atkAttrs.length" class="chips">
+          <div v-if="atkAttrs.filter(e => e !== '無').length" class="chips">
             <span
-              v-for="e in atkAttrs" :key="e" class="chip"
+              v-for="e in atkAttrs.filter(e => e !== '無')" :key="e" class="chip"
               :style="{ background: ELEM_COLOR[e] + '22', borderColor: ELEM_COLOR[e], color: ELEM_COLOR[e] }"
             >{{ e }}</span>
           </div>
@@ -421,9 +425,9 @@ function resetAll() {
               @click="def.attr2 = e"
             >{{ e }}</button>
           </div>
-          <div v-if="defAttrs.length" class="chips">
+          <div v-if="defAttrs.filter(e => e !== '無').length" class="chips">
             <span
-              v-for="e in defAttrs" :key="e" class="chip"
+              v-for="e in defAttrs.filter(e => e !== '無')" :key="e" class="chip"
               :style="{ background: ELEM_COLOR[e] + '22', borderColor: ELEM_COLOR[e], color: ELEM_COLOR[e] }"
             >{{ e }}</span>
           </div>
