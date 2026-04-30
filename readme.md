@@ -29,21 +29,32 @@
 
 > 本章節為傷害計算模組的完整規格，代碼實作應嚴格依照此文件。
 
-### 一、核心公式
+### 一、攻擊類型與公式
 
-```
-最終傷害 = floor( 基礎傷害 × CM × 屬性倍率 )
-```
+各攻擊類型使用**不同**公式，`floor`（無條件捨去）適用所有類型。
 
-- `floor`：無條件捨去小數，取整數
-- `CM`：綜合倍率（Combined Multiplier）
-- `屬性倍率`：屬性相剋乘數
+| 攻擊類型 | 計算公式 | BAM 有效？ | 屬性相剋？ | 扣防禦值？ |
+|---------|---------|:---:|:---:|:---:|
+| **普攻** | `floor(原始 × CM × 屬性)` | ✅ | ✅ | — |
+| **式神** | 同普攻 | ✅ | ✅ | — |
+| **奧義** | `floor(原始 × DRM × 屬性) − 奧防` | ❌ | ✅ | 奧防 |
+| **攻擊系忍術** | `floor(原始 × DRM) − 術防` | ❌ | ❌ | 術防 |
+| **錢標**（原始固定 150） | `floor(150 × CM)` | ✅ | ❌ | — |
+| **衝撞** | `floor(原始衝撞 × CM)` | ✅ | ❌ | — |
+
+**衝撞原始傷害**：非變身系 = 30、夜叉 = 100、赤鬼 = 200
+
+> 修羅屬性補正（DRM 下限）對普攻、奧義、衝撞有效；攻擊系忍術、錢標不適用。
+
+---
 
 ### 二、CM 綜合倍率
 
 ```
 CM = BAM + DRM - 1
 ```
+
+適用攻擊類型：**普攻、式神、錢標、衝撞**
 
 | 代號 | 全名 | 角色 | 基礎值 |
 |------|------|------|--------|
@@ -55,6 +66,8 @@ CM = BAM + DRM - 1
 ---
 
 ### 三、BAM 攻擊倍率
+
+> BAM **只影響** 普攻、式神、錢標、衝撞。**奧義和攻擊系忍術不受 BAM 影響。**
 
 基礎值：`1`
 
@@ -93,6 +106,8 @@ CM = BAM + DRM - 1
 
 ### 四、DRM 承受倍率
 
+> **所有**攻擊類型均受 DRM 影響。
+
 基礎值：`1`
 
 #### 4-1. 互斥群組（三選一，取最高優先者）
@@ -116,6 +131,8 @@ CM = BAM + DRM - 1
 #### 4-3. 修羅補正（DRM 下限保護）
 
 > 觸發條件：**攻方屬性含「修羅」**，且 rawDRM（修正前）< 1
+>
+> 適用攻擊類型：**普攻、奧義、衝撞**（攻擊系忍術、錢標不適用）
 
 觸發效果：DRM 強制提升至 `1`，不得低於基準值。
 
@@ -142,6 +159,8 @@ DRM = (攻方含修羅 && rawDRM < 1) ? 1 : rawDRM
 ---
 
 ### 五、屬性倍率（屬性相剋）
+
+> 適用攻擊類型：**普攻、式神、奧義**（攻擊系忍術、錢標、衝撞不受屬性影響）
 
 #### 5-1. 計算流程
 
@@ -205,11 +224,25 @@ DRM = (攻方含修羅 && rawDRM < 1) ? 1 : rawDRM
 
 ---
 
-### 六、完整計算流程（偽代碼）
+### 六、毒遁傷害（獨立規則）
+
+```
+毒遁傷害 = 衝撞最終傷害 × 3
+```
+
+- 對**變身系**無效
+- 無視受擊方 DRM（承受傷害倍數）
+- 無視術防
+
+---
+
+### 七、完整計算流程（偽代碼）
 
 ```
 輸入：
-  baseDmg           基礎傷害（整數）
+  attackType        攻擊類型（normal/ult/ninjutsu/dart/charge）
+  baseDmg           基礎傷害（整數；錢標固定 150；衝撞依變身類型 30/100/200）
+  specialDef        特殊防禦值（奧義填奧防、攻擊系忍術填術防，其餘為 0）
   atk.wrathSeal     攻方暴怒法印（bool）
   atk.magicWater    攻方魔水（bool）
   atk.hotblood      攻方熱血（bool）
@@ -223,14 +256,14 @@ DRM = (攻方含修羅 && rawDRM < 1) ? 1 : rawDRM
   def.attrs[]       守方屬性（0–2個）
 
 步驟 1：解析攻擊狀態（互斥）
-  if atk.wrathSeal:  effectiveBuff = "wrathSeal"
+  if atk.wrathSeal:    effectiveBuff = "wrathSeal"
   elif atk.magicWater: effectiveBuff = "magicWater"
   elif atk.hotblood:   effectiveBuff = "hotblood"
-  else:              effectiveBuff = "none"
+  else:                effectiveBuff = "none"
 
 步驟 2：計算 BAM
   BAM = 1
-  if effectiveBuff == "wrathSeal":  BAM += 3
+  if effectiveBuff == "wrathSeal":    BAM += 3
   elif effectiveBuff == "magicWater": BAM += 1
   elif effectiveBuff == "hotblood":   BAM += 0.5
   if atk.shikigami: BAM += 1
@@ -238,12 +271,9 @@ DRM = (攻方含修羅 && rawDRM < 1) ? 1 : rawDRM
 
 步驟 3：解析防禦狀態（互斥）
   greenBugValid = def.greenBug AND NOT atk.wrathSeal
-  if def.wrathSeal:
-    effectiveDef = "wrathSeal"
-  elif def.magicWater:
-    effectiveDef = "magicWater"
-  else:
-    effectiveDef = "steel" if def.steel else "none"
+  if def.wrathSeal:    effectiveDef = "wrathSeal"
+  elif def.magicWater: effectiveDef = "magicWater"
+  else:                effectiveDef = "steel" if def.steel else "none"
 
 步驟 4：計算 rawDRM
   if effectiveDef == "wrathSeal": rawDRM = 4
@@ -253,14 +283,15 @@ DRM = (攻方含修羅 && rawDRM < 1) ? 1 : rawDRM
     elif effectiveDef == "steel":    rawDRM -= 0.25
     if greenBugValid: rawDRM += 0.5
 
-步驟 5：修羅補正
+步驟 5：修羅補正（僅普攻、奧義、衝撞）
   atkHasShura = "修羅" in atk.attrs
-  DRM = (atkHasShura AND rawDRM < 1) ? 1 : rawDRM
+  shuraApplies = (attackType in ["normal", "ult", "charge"])
+  DRM = (atkHasShura AND shuraApplies AND rawDRM < 1) ? 1 : rawDRM
 
-步驟 6：計算 CM
+步驟 6：計算 CM（僅普攻、式神、錢標、衝撞使用）
   CM = BAM + DRM - 1
 
-步驟 7：計算屬性倍率
+步驟 7：計算屬性倍率（僅普攻、式神、奧義使用）
   if atk.attrs 為空 OR def.attrs 為空:
     elemMult = 1
   else:
@@ -270,13 +301,24 @@ DRM = (攻方含修羅 && rawDRM < 1) ? 1 : rawDRM
         adjSum += ADJ[a][d]  // 不存在則為 0
     elemMult = 1 + adjSum
 
-步驟 8：計算最終傷害
-  finalDmg = floor(baseDmg × CM × elemMult)
+步驟 8：依攻擊類型計算最終傷害
+  switch attackType:
+    "normal" / "shikigami":
+      finalDmg = floor(baseDmg × CM × elemMult)
+    "ult":
+      finalDmg = floor(baseDmg × DRM × elemMult) - specialDef
+    "ninjutsu":
+      finalDmg = floor(baseDmg × DRM) - specialDef
+    "dart":
+      finalDmg = floor(150 × CM)
+    "charge":
+      finalDmg = floor(baseDmg × CM)
+      // 毒遁：floor(finalDmg × 3)（對變身系無效，無視 DRM 與術防）
 ```
 
 ---
 
-### 七、邊界情況與特殊規則
+### 八、邊界情況與特殊規則
 
 | 情況 | 行為 |
 |------|------|
@@ -286,6 +328,9 @@ DRM = (攻方含修羅 && rawDRM < 1) ? 1 : rawDRM
 | 防方暴怒法印 + 攻方修羅補正 | rawDRM = 4，不觸發補正（4 ≥ 1） |
 | 攻方暴怒法印 + 防方青蟲 | 青蟲無效（攻方暴怒法印壓制） |
 | 防方暴怒法印 + 防方青蟲 | 青蟲無效（防方暴怒法印壓制所有防禦狀態） |
+| 奧義最終傷害扣奧防後為負值 | finalDmg = 0（不得為負） |
+| 攻擊系忍術最終傷害扣術防後為負值 | finalDmg = 0（不得為負） |
+| 毒遁傷害對變身系施放 | 毒遁無效，不計算 |
 
 ---
 

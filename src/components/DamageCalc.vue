@@ -1,15 +1,25 @@
 <script setup>
 import { ref, reactive, computed } from 'vue'
 
+const ATTACK_TYPES = [
+  { key: 'normal',   label: '普攻 / 式神' },
+  { key: 'ult',      label: '奧義' },
+  { key: 'ninjutsu', label: '攻擊系忍術' },
+  { key: 'dart',     label: '錢標' },
+  { key: 'charge',   label: '衝撞' },
+]
+
+const CHARGE_PRESETS = [
+  { label: '非變身 30',  val: 30  },
+  { label: '夜叉 100',   val: 100 },
+  { label: '赤鬼 200',   val: 200 },
+]
+
 const ELEMENTS = ['無', '炎', '冰', '風', '雷', '地', '光', '闇', '修羅', '毒', '木']
-
 const ELEM_COLOR = {
-  '無': '#888899', '炎': '#ff6b35', '冰': '#74c0fc',
-  '風': '#a9e34b', '雷': '#f4c030', '地': '#b07b45',
-  '光': '#ffd700', '闇': '#b08fff', '修羅': '#e63946',
-  '毒': '#2dd4bf', '木': '#52b788',
+  '無': '#888899', '炎': '#ff6b35', '冰': '#74c0fc', '風': '#a9e34b', '雷': '#f4c030',
+  '地': '#b07b45', '光': '#ffd700', '闇': '#b08fff', '修羅': '#e63946', '毒': '#2dd4bf', '木': '#52b788',
 }
-
 const ADJ = {
   '炎':  { '冰': -0.2 },
   '冰':  { '炎': 0.2, '毒': 0.2 },
@@ -27,7 +37,6 @@ const ATK_BTNS = [
   { key: 'shikigami',  label: '式神',     val: '+1'    },
   { key: 'wrathSeal',  label: '暴怒法印', val: '+3'    },
 ]
-
 const DEF_BTNS = [
   { key: 'steel',      label: '鋼鐵',     val: '−0.25' },
   { key: 'magicWater', label: '魔水',     val: '−0.5'  },
@@ -38,18 +47,20 @@ const DEF_BTNS = [
 function getAdj(a, d) { return ADJ[a]?.[d] ?? 0 }
 function r2(n) { return Math.round(n * 100) / 100 }
 
-const baseDmg = ref(150)
+const attackType = ref('normal')
+const baseDmg    = ref(0)
+const specialDef = ref(0)
+const poisonToad = ref(false)
 
-const atk = reactive({
-  hotblood: false, magicWater: false, redBug: false,
-  shikigami: false, wrathSeal: false,
-  attr1: '無', attr2: '無', useDual: false,
-})
+// formula flags
+const bamApplies   = computed(() => ['normal', 'dart', 'charge'].includes(attackType.value))
+const elemApplies  = computed(() => ['normal', 'ult'].includes(attackType.value))
+const shuraApplies = computed(() => ['normal', 'ult', 'charge'].includes(attackType.value))
+const showSpecialDef = computed(() => ['ult', 'ninjutsu'].includes(attackType.value))
+const specialDefLabel = computed(() => attackType.value === 'ult' ? '奧防' : '術防')
 
-const def = reactive({
-  steel: false, magicWater: false, greenBug: false, wrathSeal: false,
-  attr1: '無', attr2: '無', useDual: false,
-})
+const atk = reactive({ hotblood: false, magicWater: false, redBug: false, shikigami: false, wrathSeal: false, attr1: '無', attr2: '無', useDual: false })
+const def = reactive({ steel: false, magicWater: false, greenBug: false, wrathSeal: false, attr1: '無', attr2: '無', useDual: false })
 
 const eAtk = computed(() => {
   if (atk.wrathSeal)
@@ -74,7 +85,6 @@ const atkAttrs = computed(() => {
   if (atk.useDual && atk.attr2 !== '無' && atk.attr2 !== atk.attr1) a.push(atk.attr2)
   return a
 })
-
 const defAttrs = computed(() => {
   const a = []
   if (def.attr1 !== '無') a.push(def.attr1)
@@ -107,13 +117,13 @@ const rawDRM = computed(() => {
 
 const DRM = computed(() => {
   const v = rawDRM.value
-  return (atkHasShura.value && v < 1) ? 1 : v
+  return (atkHasShura.value && shuraApplies.value && v < 1) ? 1 : v
 })
 
 const CM = computed(() => r2(BAM.value + DRM.value - 1))
 
 const elemMult = computed(() => {
-  if (!atkAttrs.value.length || !defAttrs.value.length) return 1
+  if (!elemApplies.value || !atkAttrs.value.length || !defAttrs.value.length) return 1
   let adj = 0
   for (const a of atkAttrs.value)
     for (const d of defAttrs.value)
@@ -121,7 +131,37 @@ const elemMult = computed(() => {
   return r2(1 + adj)
 })
 
-const finalDmg = computed(() => Math.floor((Number(baseDmg.value) || 0) * CM.value * elemMult.value))
+const effectiveBase = computed(() => attackType.value === 'dart' ? 150 : (Number(baseDmg.value) || 0))
+
+const finalDmg = computed(() => {
+  const base = effectiveBase.value
+  const sd   = Number(specialDef.value) || 0
+  switch (attackType.value) {
+    case 'normal':   return Math.floor(base * CM.value * elemMult.value)
+    case 'ult':      return Math.max(0, Math.floor(base * DRM.value * elemMult.value) - sd)
+    case 'ninjutsu': return Math.max(0, Math.floor(base * DRM.value) - sd)
+    case 'dart':     return Math.floor(150 * CM.value)
+    case 'charge':   return Math.floor(base * CM.value)
+    default: return 0
+  }
+})
+
+const poisonToadDmg = computed(() =>
+  poisonToad.value && attackType.value === 'charge' ? finalDmg.value * 3 : null
+)
+
+const finalFormula = computed(() => {
+  const base = effectiveBase.value
+  const sd   = Number(specialDef.value) || 0
+  switch (attackType.value) {
+    case 'normal':   return `${base} × CM(${CM.value}) × 屬性(${elemMult.value})`
+    case 'ult':      return `floor(${base} × DRM(${DRM.value}) × 屬性(${elemMult.value})) − 奧防(${sd})`
+    case 'ninjutsu': return `floor(${base} × DRM(${DRM.value})) − 術防(${sd})`
+    case 'dart':     return `150 × CM(${CM.value})`
+    case 'charge':   return `${base} × CM(${CM.value})`
+    default: return ''
+  }
+})
 
 const atkWarn = computed(() => {
   if (atk.wrathSeal) {
@@ -176,13 +216,13 @@ const drmDetail = computed(() => {
     const active = eDef.value.greenBug
     steps.push({ label: '青蟲', val: '+0.5', cls: active ? 'pos' : 'off', note: active ? '' : '攻方暴怒法印，無效' })
   }
-  if (atkHasShura.value && rawDRM.value < 1)
+  if (atkHasShura.value && shuraApplies.value && rawDRM.value < 1)
     steps.push({ label: '修羅補正', val: '↑≥1', cls: 'shura' })
   return steps
 })
 
 const elemDetail = computed(() => {
-  if (!atkAttrs.value.length || !defAttrs.value.length) return []
+  if (!elemApplies.value || !atkAttrs.value.length || !defAttrs.value.length) return []
   const result = []
   for (const a of atkAttrs.value)
     for (const d of defAttrs.value)
@@ -202,8 +242,20 @@ function defBtnCls(key) {
   return { on: true, dim: !eff, wrath: key === 'wrathSeal' && eff, 'grn-act': key === 'greenBug' && eff, 'def-act': key !== 'wrathSeal' && key !== 'greenBug' && eff }
 }
 
+function setAttackType(type) {
+  attackType.value = type
+  specialDef.value = 0
+  poisonToad.value = false
+  if (type === 'dart') baseDmg.value = 150
+  else if (type === 'charge') baseDmg.value = 30
+  else baseDmg.value = 0
+}
+
 function resetAll() {
-  baseDmg.value = 150
+  attackType.value = 'normal'
+  baseDmg.value = 0
+  specialDef.value = 0
+  poisonToad.value = false
   Object.assign(atk, { hotblood: false, magicWater: false, redBug: false, shikigami: false, wrathSeal: false, attr1: '無', attr2: '無', useDual: false })
   Object.assign(def, { steel: false, magicWater: false, greenBug: false, wrathSeal: false, attr1: '無', attr2: '無', useDual: false })
 }
@@ -212,15 +264,47 @@ function resetAll() {
 <template>
   <div class="dc">
 
-    <!-- BASE DAMAGE -->
+    <!-- ATTACK TYPE SELECTOR -->
+    <div class="type-bar">
+      <button
+        v-for="t in ATTACK_TYPES" :key="t.key"
+        class="type-btn" :class="{ active: attackType === t.key }"
+        @click="setAttackType(t.key)"
+      >{{ t.label }}</button>
+    </div>
+
+    <!-- BASE DAMAGE + SPECIAL DEF -->
     <div class="base-sec">
       <div class="base-inner">
         <span class="base-lbl">基礎傷害</span>
-        <input type="number" v-model.number="baseDmg" min="0" placeholder="輸入基礎傷害" class="base-inp" />
-        <div class="presets">
-          <button class="pre-btn" @click="baseDmg = 150">錢標 150</button>
-          <button class="pre-btn rst-btn" @click="resetAll">重置</button>
+
+        <!-- 錢標 fixed -->
+        <span v-if="attackType === 'dart'" class="base-fixed">150（固定）</span>
+        <!-- others: input -->
+        <input v-else type="number" v-model.number="baseDmg" min="0" placeholder="0" class="base-inp" />
+
+        <!-- 衝撞 presets -->
+        <div v-if="attackType === 'charge'" class="presets">
+          <button
+            v-for="p in CHARGE_PRESETS" :key="p.val"
+            class="pre-btn" :class="{ 'pre-active': baseDmg === p.val }"
+            @click="baseDmg = p.val"
+          >{{ p.label }}</button>
         </div>
+
+        <!-- 奧防 / 術防 -->
+        <template v-if="showSpecialDef">
+          <span class="base-lbl base-lbl-def">{{ specialDefLabel }}</span>
+          <input type="number" v-model.number="specialDef" min="0" placeholder="0" class="base-inp base-inp-sm" />
+        </template>
+
+        <!-- 毒遁 toggle -->
+        <label v-if="attackType === 'charge'" class="toad-lbl">
+          <input type="checkbox" v-model="poisonToad" />
+          <span>毒遁</span>
+        </label>
+
+        <button class="pre-btn rst-btn" @click="resetAll">重置</button>
       </div>
     </div>
 
@@ -236,7 +320,10 @@ function resetAll() {
         </div>
 
         <div class="pblk">
-          <div class="pblk-hd">攻擊狀態</div>
+          <div class="pblk-hd">
+            攻擊狀態
+            <span v-if="!bamApplies" class="na-hint">（BAM 不計入此類型；暴怒法印仍影響防方青蟲）</span>
+          </div>
           <div class="btn-row">
             <button
               v-for="b in ATK_BTNS" :key="b.key"
@@ -250,8 +337,11 @@ function resetAll() {
           <div v-if="atkWarn" class="warn">{{ atkWarn }}</div>
         </div>
 
-        <div class="pblk">
-          <div class="pblk-hd">元素屬性</div>
+        <div class="pblk" :class="{ 'pblk-na': !elemApplies }">
+          <div class="pblk-hd">
+            元素屬性
+            <span v-if="!elemApplies" class="na-hint">（屬性不計入此類型；修羅仍影響 DRM 補正）</span>
+          </div>
           <div class="egrid">
             <button
               v-for="e in ELEMENTS" :key="e"
@@ -305,8 +395,11 @@ function resetAll() {
           <div v-if="defWarn" class="warn">{{ defWarn }}</div>
         </div>
 
-        <div class="pblk">
-          <div class="pblk-hd">元素屬性</div>
+        <div class="pblk" :class="{ 'pblk-na': !elemApplies }">
+          <div class="pblk-hd">
+            元素屬性
+            <span v-if="!elemApplies" class="na-hint">（屬性不計入此類型）</span>
+          </div>
           <div class="egrid">
             <button
               v-for="e in ELEMENTS" :key="e"
@@ -342,12 +435,17 @@ function resetAll() {
     <!-- RESULTS -->
     <section class="results">
 
-      <!-- Formula cards -->
       <div class="fcards">
 
-        <div class="fcard">
-          <div class="fc-name">攻擊倍率 <span class="tag">BAM</span></div>
-          <div class="fc-val" :class="BAM > 1 ? 'v-pos' : BAM < 1 ? 'v-neg' : ''">{{ BAM }}</div>
+        <!-- BAM -->
+        <div class="fcard" :class="{ 'fcard-na': !bamApplies }">
+          <div class="fc-name">
+            攻擊倍率 <span class="tag">BAM</span>
+            <span v-if="!bamApplies" class="na-tag">不計入公式</span>
+          </div>
+          <div class="fc-val" :class="bamApplies ? (BAM > 1 ? 'v-pos' : BAM < 1 ? 'v-neg' : '') : 'v-na'">
+            {{ BAM }}
+          </div>
           <div class="steps">
             <div v-for="(s, i) in bamDetail" :key="i" class="step" :class="{ 'step-off': s.cls === 'off' }">
               <span class="sv" :class="'sv-' + s.cls">{{ s.val }}</span>
@@ -357,6 +455,7 @@ function resetAll() {
           <div class="fc-eq">= {{ BAM }}</div>
         </div>
 
+        <!-- DRM -->
         <div class="fcard">
           <div class="fc-name">承受倍率 <span class="tag">DRM</span></div>
           <div class="fc-val" :class="DRM > 1 ? 'v-pos' : DRM < 1 ? 'v-neg' : ''">{{ DRM }}</div>
@@ -369,39 +468,64 @@ function resetAll() {
           </div>
           <div class="fc-eq">
             = {{ DRM }}
-            <span v-if="atkHasShura && rawDRM < 1" class="shura-note">（修羅補正）</span>
+            <span v-if="atkHasShura && shuraApplies && rawDRM < 1" class="shura-note">（修羅補正）</span>
           </div>
         </div>
 
-        <div class="fcard fcard-cm">
-          <div class="fc-name">綜合倍率 <span class="tag">CM</span></div>
-          <div class="fc-val fc-val-lg" :class="CM > 1 ? 'v-pos' : CM < 1 ? 'v-neg' : ''">{{ CM }}</div>
+        <!-- CM -->
+        <div class="fcard fcard-cm" :class="{ 'fcard-na': !bamApplies }">
+          <div class="fc-name">
+            綜合倍率 <span class="tag">CM</span>
+            <span v-if="!bamApplies" class="na-tag">不計入公式</span>
+          </div>
+          <div class="fc-val fc-val-lg" :class="bamApplies ? (CM > 1 ? 'v-pos' : CM < 1 ? 'v-neg' : '') : 'v-na'">
+            {{ CM }}
+          </div>
           <div class="cm-formula">BAM({{ BAM }}) + DRM({{ DRM }}) − 1</div>
         </div>
 
-        <div class="fcard fcard-elem">
-          <div class="fc-name">屬性相剋</div>
-          <div class="fc-val fc-val-lg" :class="elemMult > 1 ? 'v-pos' : elemMult < 1 ? 'v-neg' : ''">{{ elemMult }}x</div>
+        <!-- 屬性相剋 -->
+        <div class="fcard fcard-elem" :class="{ 'fcard-na': !elemApplies }">
+          <div class="fc-name">
+            屬性相剋
+            <span v-if="!elemApplies" class="na-tag">不計入公式</span>
+          </div>
+          <div class="fc-val fc-val-lg" :class="elemApplies ? (elemMult > 1 ? 'v-pos' : elemMult < 1 ? 'v-neg' : '') : 'v-na'">
+            {{ elemApplies ? elemMult + 'x' : '—' }}
+          </div>
           <div class="elem-parts">
-            <span v-if="!elemDetail.length" class="ep-none">無相剋</span>
-            <span
-              v-for="(p, i) in elemDetail" :key="i"
-              class="ep"
-              :class="p.adj > 0 ? 'ep-pos' : p.adj < 0 ? 'ep-neg' : 'ep-neu'"
-            >{{ p.adj > 0 ? '+' : p.adj < 0 ? '−' : '±' }}0.2 {{ p.a }}→{{ p.d }}</span>
+            <template v-if="elemApplies">
+              <span v-if="!elemDetail.length" class="ep-none">無相剋</span>
+              <span
+                v-for="(p, i) in elemDetail" :key="i"
+                class="ep"
+                :class="p.adj > 0 ? 'ep-pos' : p.adj < 0 ? 'ep-neg' : 'ep-neu'"
+              >{{ p.adj > 0 ? '+' : p.adj < 0 ? '−' : '±' }}0.2 {{ p.a }}→{{ p.d }}</span>
+            </template>
+            <span v-else class="ep-none">此類型不受屬性影響</span>
           </div>
         </div>
 
       </div>
 
-      <!-- Final damage -->
+      <!-- FINAL DAMAGE -->
       <div class="final-box">
-        <div class="final-formula">
-          {{ baseDmg || 0 }} × CM({{ CM }}) × 屬性({{ elemMult }})
-        </div>
+        <div class="final-formula">{{ finalFormula }}</div>
         <div class="final-label">最終傷害</div>
         <div class="final-num" :class="finalDmg > 0 ? 'num-hi' : ''">
           {{ finalDmg.toLocaleString() }}
+        </div>
+      </div>
+
+      <!-- 毒遁 RESULT -->
+      <div v-if="attackType === 'charge'" class="toad-box">
+        <label class="toad-toggle">
+          <input type="checkbox" v-model="poisonToad" />
+          <span>毒遁傷害（衝撞最終 × 3，對變身系無效，無視 DRM 與術防）</span>
+        </label>
+        <div v-if="poisonToadDmg !== null" class="toad-result">
+          {{ finalDmg.toLocaleString() }} × 3 =
+          <span class="toad-num">{{ poisonToadDmg.toLocaleString() }}</span>
         </div>
       </div>
 
@@ -411,16 +535,50 @@ function resetAll() {
 </template>
 
 <style scoped>
-/* BASE DAMAGE */
-.base-sec {
+/* ATTACK TYPE BAR */
+.type-bar {
+  display: flex;
+  gap: 2px;
+  padding: 10px 14px 0;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  padding: 14px 18px;
+  flex-wrap: wrap;
+}
+.type-btn {
+  padding: 6px 16px;
+  border-radius: 7px 7px 0 0;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  color: var(--text3);
+  font-size: 0.84rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  position: relative;
+  bottom: -1px;
+}
+.type-btn:hover:not(.active) { color: var(--text2); background: var(--surface2); }
+.type-btn.active {
+  background: var(--surface2);
+  color: var(--gold);
+  border-color: var(--border);
+  border-bottom-color: var(--surface2);
+}
+
+/* BASE DAMAGE */
+.base-sec {
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 18px;
 }
 .base-inner {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 .base-lbl {
@@ -429,31 +587,70 @@ function resetAll() {
   color: var(--text2);
   white-space: nowrap;
 }
+.base-lbl-def {
+  margin-left: 6px;
+  color: var(--blue);
+}
+.base-fixed {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 16px;
+}
 .base-inp {
-  width: 140px;
+  width: 130px;
   font-size: 1.05rem;
   font-weight: 600;
   text-align: center;
 }
+.base-inp-sm {
+  width: 90px;
+}
 .presets {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
+  flex-wrap: wrap;
 }
 .pre-btn {
-  padding: 4px 13px;
+  padding: 4px 12px;
   border-radius: 20px;
   border: 1px solid var(--border2);
-  background: var(--surface2);
+  background: var(--surface);
   color: var(--text2);
   font-size: 0.78rem;
   cursor: pointer;
   font-family: inherit;
   transition: all 0.12s;
+  white-space: nowrap;
 }
 .pre-btn:hover { border-color: var(--gold); color: var(--gold); }
-.rst-btn { border-color: var(--border); color: var(--text3); }
+.pre-btn.pre-active { border-color: var(--gold); color: var(--gold); background: rgba(244,192,48,0.08); }
+.rst-btn { border-color: var(--border); color: var(--text3); margin-left: auto; }
 .rst-btn:hover { border-color: var(--red); color: var(--red); }
+
+/* 毒遁 toggle in base row */
+.toad-lbl {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8rem;
+  color: var(--text2);
+  cursor: pointer;
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  padding: 4px 12px;
+  background: var(--surface);
+  transition: all 0.12s;
+}
+.toad-lbl:has(input:checked) {
+  border-color: var(--purple);
+  color: var(--purple);
+  background: rgba(176,143,255,0.08);
+}
 
 /* PANELS */
 .panels {
@@ -465,7 +662,6 @@ function resetAll() {
 @media (max-width: 600px) {
   .panels { grid-template-columns: 1fr; }
 }
-
 .panel {
   background: var(--surface);
   padding: 16px 15px;
@@ -497,9 +693,9 @@ function resetAll() {
 .atk-tag { background: rgba(230,57,70,0.12); border: 1px solid rgba(230,57,70,0.3); color: var(--red); }
 .def-tag { background: rgba(116,185,255,0.12); border: 1px solid rgba(116,185,255,0.3); color: var(--blue); }
 
-/* PBLK */
 .pblk { margin-bottom: 16px; }
 .pblk:last-child { margin-bottom: 0; }
+.pblk-na { opacity: 0.55; }
 .pblk-hd {
   font-size: 0.65rem;
   font-weight: 700;
@@ -507,11 +703,22 @@ function resetAll() {
   letter-spacing: 0.12em;
   color: var(--text3);
   margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.na-hint {
+  font-size: 0.6rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text3);
+  opacity: 0.8;
 }
 
 /* STATUS BUTTONS */
 .btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
-
 .sbtn {
   display: flex;
   flex-direction: column;
@@ -532,20 +739,15 @@ function resetAll() {
 
 .sbtn.on { opacity: 1; }
 .sbtn.dim { opacity: 0.35; text-decoration: line-through; }
-
 .sbtn.atk-act { background: rgba(230,57,70,0.1); border-color: var(--red); color: var(--red); }
 .sbtn.atk-act .sb-val { color: rgba(230,57,70,0.55); }
-
 .sbtn.def-act { background: rgba(116,185,255,0.1); border-color: var(--blue); color: var(--blue); }
 .sbtn.def-act .sb-val { color: rgba(116,185,255,0.55); }
-
 .sbtn.grn-act { background: rgba(82,183,136,0.1); border-color: var(--green); color: var(--green); }
 .sbtn.grn-act .sb-val { color: rgba(82,183,136,0.55); }
-
 .sbtn.wrath { background: rgba(244,192,48,0.1); border-color: var(--gold); color: var(--gold); }
 .sbtn.wrath .sb-val { color: rgba(244,192,48,0.55); }
 
-/* WARN */
 .warn {
   margin-top: 7px;
   font-size: 0.72rem;
@@ -559,7 +761,6 @@ function resetAll() {
 /* ELEMENT GRID */
 .egrid { display: flex; flex-wrap: wrap; gap: 5px; }
 .mt4 { margin-top: 5px; }
-
 .ebtn {
   padding: 3px 8px;
   border-radius: 5px;
@@ -579,7 +780,6 @@ function resetAll() {
   font-weight: 600;
 }
 .ebtn.ebtn-same { opacity: 0.3; pointer-events: none; }
-
 .dual-lbl {
   display: flex;
   align-items: center;
@@ -589,7 +789,6 @@ function resetAll() {
   color: var(--text2);
   cursor: pointer;
 }
-
 .chips { display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
 .chip {
   padding: 2px 10px;
@@ -616,13 +815,14 @@ function resetAll() {
 @media (max-width: 480px) {
   .fcards { grid-template-columns: 1fr 1fr; }
 }
-
 .fcard {
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 12px 12px 10px;
+  transition: opacity 0.2s;
 }
+.fcard-na { opacity: 0.4; }
 .fcard-cm   { border-color: rgba(162,155,254,0.25); }
 .fcard-elem { border-color: rgba(244,192,48,0.2); }
 
@@ -635,6 +835,7 @@ function resetAll() {
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin-bottom: 4px;
+  flex-wrap: wrap;
 }
 .tag {
   background: var(--border);
@@ -643,7 +844,14 @@ function resetAll() {
   border-radius: 3px;
   font-size: 0.58rem;
 }
-
+.na-tag {
+  font-size: 0.58rem;
+  color: var(--text3);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: auto;
+}
 .fc-val {
   font-size: 1.55rem;
   font-weight: 700;
@@ -654,8 +862,8 @@ function resetAll() {
 .fc-val-lg { font-size: 2rem; }
 .v-pos { color: var(--green); }
 .v-neg { color: var(--red); }
+.v-na  { color: var(--text3); }
 
-/* STEPS */
 .steps { display: flex; flex-direction: column; gap: 3px; margin-bottom: 7px; }
 .step {
   display: flex;
@@ -665,7 +873,6 @@ function resetAll() {
   color: var(--text2);
 }
 .step-off { color: var(--text3); text-decoration: line-through; opacity: 0.45; }
-
 .sv { font-weight: 700; min-width: 38px; font-size: 0.74rem; font-variant-numeric: tabular-nums; }
 .sv-pos   { color: var(--green); }
 .sv-neg   { color: var(--red); }
@@ -673,7 +880,6 @@ function resetAll() {
 .sv-shura { color: var(--purple); }
 .sl { font-weight: 500; }
 .sn { font-size: 0.65rem; color: var(--text3); }
-
 .fc-eq {
   font-size: 0.72rem;
   color: var(--text3);
@@ -684,7 +890,6 @@ function resetAll() {
 .shura-note { color: var(--purple); font-size: 0.65rem; }
 .cm-formula { font-size: 0.74rem; color: var(--text2); font-family: 'Courier New', monospace; margin-top: 4px; }
 
-/* ELEM PARTS */
 .elem-parts { display: flex; flex-direction: column; gap: 3px; }
 .ep-none { font-size: 0.72rem; color: var(--text3); }
 .ep { font-size: 0.72rem; font-weight: 600; }
@@ -707,6 +912,7 @@ function resetAll() {
   font-size: 0.78rem;
   color: var(--text3);
   font-family: 'Courier New', monospace;
+  text-align: center;
 }
 .final-label {
   font-size: 0.7rem;
@@ -724,4 +930,37 @@ function resetAll() {
   letter-spacing: -0.02em;
 }
 .num-hi { color: var(--gold); }
+
+/* 毒遁 */
+.toad-box {
+  margin-top: 12px;
+  background: rgba(176,143,255,0.06);
+  border: 1px solid rgba(176,143,255,0.2);
+  border-radius: var(--radius-lg);
+  padding: 12px 18px;
+}
+.toad-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--text2);
+  cursor: pointer;
+}
+.toad-toggle input { accent-color: var(--purple); }
+.toad-result {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: var(--text2);
+  font-family: 'Courier New', monospace;
+  text-align: center;
+}
+.toad-num {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--purple);
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  margin-left: 4px;
+}
 </style>
