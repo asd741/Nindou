@@ -1,1 +1,0 @@
-https://asd741.github.io/Nindou/
