@@ -243,7 +243,7 @@ async function spin() {
             @click="spin"
           >
             <span v-if="isSpinning">旋轉中⋯</span>
-            <span v-else>SPIN</span>
+            <span v-else>開始抽籤</span>
           </button>
 
           <div class="part-info">
@@ -482,9 +482,9 @@ async function spin() {
   border: 2px solid var(--gold);
   background: linear-gradient(135deg, rgba(244,192,48,0.14), rgba(176,123,69,0.06));
   color: var(--gold);
-  font-size: 1.15rem;
+  font-size: 1.08rem;
   font-weight: 900;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.1em;
   font-family: inherit;
   cursor: pointer;
   transition: all 0.2s;
@@ -622,11 +622,11 @@ async function spin() {
 }
 .lot-add-btn:hover { border-color: var(--gold); color: var(--gold); }
 
-/* ── STICKS（冰棒棍，水平橫放）── */
+/* ── STICKS（古早味冰棒棍，細細長長，左右橫讀）── */
 .sticks-grid {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 9px;
   padding: 2px 0 10px;
 }
 .sticks-empty { font-size: 0.88rem; color: var(--text3); padding: 8px 0; }
@@ -634,105 +634,138 @@ async function spin() {
 .stick {
   position: relative;
   width: 100%;
-  height: 32px;
+  height: 20px;          /* 很薄 → 細長比例 */
   cursor: pointer;
   display: flex;
   align-items: center;
-  padding: 0 30px 0 10px;
-  gap: 8px;
-  border-radius: 16px;
-  background: linear-gradient(
-    to bottom,
-    #f8efce 0%, #e8d48c 35%, #d9c06e 58%, #c9a84c 100%
-  );
-  border: 1px solid #b8902c;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.35), inset 0 1px rgba(255,255,255,0.55);
-  transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+  padding: 0 24px 0 10px;
+  gap: 7px;
+  border-radius: 10px;   /* 兩端圓弧 */
+
+  /* 三層背景：亮面高光 + 木紋細條 + 底色漸層 */
+  background:
+    linear-gradient(to bottom,
+      rgba(255,255,255,0.42) 0%,
+      rgba(255,255,255,0.08) 45%,
+      transparent 100%),
+    repeating-linear-gradient(180deg,
+      transparent 0px,
+      transparent 2.5px,
+      rgba(150, 95, 20, 0.07) 2.5px,
+      rgba(150, 95, 20, 0.07) 3.5px
+    ),
+    linear-gradient(175deg,
+      #f6eac6 0%,
+      #ead598 18%,
+      #dfc47a 38%,
+      #cfae5e 58%,
+      #c1a048 80%,
+      #b89035 100%
+    );
+
+  border: 1px solid #a07828;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.5),
+    inset 0 -1px 0 rgba(0,0,0,0.12),
+    0 2px 5px rgba(0,0,0,0.32),
+    0 1px 2px rgba(0,0,0,0.18);
+
+  transition: transform 0.14s, box-shadow 0.14s, filter 0.14s;
   user-select: none;
   overflow: hidden;
 }
 
-/* 左側高光，增加立體感 */
+/* 頂部白色光澤線（讓棍子有弧面圓柱感）*/
 .stick::before {
   content: '';
   position: absolute;
-  left: 14px; top: 5px; bottom: 5px;
-  width: 2px; border-radius: 2px;
-  background: rgba(255,255,255,0.45);
+  top: 2px; left: 14px; right: 14px; height: 1px;
+  background: rgba(255,255,255,0.6);
+  border-radius: 1px;
   pointer-events: none;
 }
 
-/* 橫向木紋 */
+/* 底部陰影線（強化立體感）*/
 .stick::after {
   content: '';
   position: absolute;
-  inset: 0; border-radius: 16px;
-  background: repeating-linear-gradient(
-    90deg,
-    transparent 0px, transparent 5px,
-    rgba(0,0,0,0.022) 5px, rgba(0,0,0,0.022) 6px
-  );
+  bottom: 2px; left: 14px; right: 14px; height: 1px;
+  background: rgba(80,45,5,0.22);
+  border-radius: 1px;
   pointer-events: none;
 }
 
 .stick-name {
   position: relative;
   z-index: 2;
-  font-size: 0.95rem;
-  color: #3d2200;
+  font-size: 0.82rem;
+  color: #3c2008;
   font-weight: 700;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   letter-spacing: 0.04em;
+  text-shadow: 0 1px 0 rgba(255,230,150,0.35);
 }
 
 .stick-dot {
   position: relative;
   z-index: 3;
-  width: 9px; height: 9px;
+  width: 8px; height: 8px;
   border-radius: 50%;
-  border: 1px solid rgba(0,0,0,0.25);
+  border: 1px solid rgba(0,0,0,0.22);
   flex-shrink: 0;
 }
 
 .stick-del {
-  position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
+  position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
   z-index: 20;
-  width: 18px; height: 18px; border-radius: 50%; border: none;
-  background: rgba(180, 30, 40, 0.35); color: rgba(255,255,255,0.55);
-  font-size: 0.65rem; cursor: pointer;
+  width: 14px; height: 14px; border-radius: 50%; border: none;
+  background: rgba(160, 25, 35, 0.3); color: rgba(255,255,255,0.5);
+  font-size: 0.58rem; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   line-height: 1; padding: 0; font-family: inherit;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.14s, color 0.14s;
 }
 .stick:hover .stick-del {
-  background: rgba(220, 50, 60, 0.88);
+  background: rgba(210, 45, 55, 0.92);
   color: #fff;
 }
 
 .stick:hover {
   transform: translateY(-1px);
-  filter: brightness(1.05);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.38), inset 0 1px rgba(255,255,255,0.55);
+  filter: brightness(1.06);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.5),
+    0 4px 10px rgba(0,0,0,0.38),
+    0 1px 3px rgba(0,0,0,0.22);
 }
 
-/* SELECTED（已加入轉盤）*/
+/* SELECTED（已放入轉盤 → 金色發光）*/
 .stick.stick-on {
-  background: linear-gradient(
-    to bottom,
-    #fff8b8 0%, #f4cc40 35%, #e0a800 58%, #c88a00 100%
-  );
-  border-color: #c89000;
-  box-shadow: 0 0 16px rgba(244,192,48,0.45), 0 2px 6px rgba(0,0,0,0.3), inset 0 1px rgba(255,255,255,0.45);
-}
-.stick.stick-on::before {
-  background: rgba(255,255,255,0.5);
+  background:
+    linear-gradient(to bottom,
+      rgba(255,255,255,0.45) 0%,
+      rgba(255,255,255,0.1) 45%,
+      transparent 100%),
+    repeating-linear-gradient(180deg,
+      transparent 0px, transparent 2.5px,
+      rgba(180,120,0,0.1) 2.5px, rgba(180,120,0,0.1) 3.5px
+    ),
+    linear-gradient(175deg,
+      #fff6b0 0%, #f4cc48 18%, #e8b020 42%,
+      #d89800 65%, #c88800 100%
+    );
+  border-color: #b87c00;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,220,0.6),
+    0 0 14px rgba(244,192,48,0.5),
+    0 2px 6px rgba(0,0,0,0.28);
 }
 .stick.stick-on .stick-name {
   color: #3d2000;
-  text-shadow: 0 1px 0 rgba(255,255,255,0.25);
+  text-shadow: 0 1px 0 rgba(255,240,160,0.5);
 }
 
 /* STATUS CONFIG */
