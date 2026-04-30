@@ -1,13 +1,33 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import DamageCalc from './components/DamageCalc.vue'
 import LuckyDraw from './components/LuckyDraw.vue'
 
-const activeTab = ref('lucky')
 const tabs = [
   { key: 'damage', label: '傷害計算' },
   { key: 'lucky',  label: '公會戰福袋抽籤' },
 ]
+
+const getTabFromURL = () => {
+  const t = new URLSearchParams(window.location.search).get('tab')
+  return tabs.some(x => x.key === t) ? t : 'lucky'
+}
+
+const activeTab = ref(getTabFromURL())
+
+watch(activeTab, (tab) => {
+  const url = new URL(window.location.href)
+  url.searchParams.set('tab', tab)
+  window.history.replaceState({}, '', url)
+})
+
+onMounted(() => {
+  const url = new URL(window.location.href)
+  if (!url.searchParams.has('tab')) {
+    url.searchParams.set('tab', activeTab.value)
+    window.history.replaceState({}, '', url)
+  }
+})
 </script>
 
 <template>

@@ -477,6 +477,7 @@ async function spin() {
 
 /* SPIN BTN */
 .spin-btn {
+  margin-top: 10px;
   padding: 13px 56px;
   border-radius: 40px;
   border: 2px solid var(--gold);
@@ -634,41 +635,55 @@ async function spin() {
 .stick {
   position: relative;
   width: 100%;
-  height: 20px;          /* 很薄 → 細長比例 */
+  height: 28px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  padding: 0 24px 0 10px;
+  padding: 0 26px 0 10px;
   gap: 7px;
-  border-radius: 10px;   /* 兩端圓弧 */
+  border-radius: 14px;
 
-  /* 三層背景：亮面高光 + 木紋細條 + 底色漸層 */
+  /* 四層背景：亮面高光 + 主木紋 + 次木紋 + 底色漸層 */
   background:
     linear-gradient(to bottom,
-      rgba(255,255,255,0.42) 0%,
-      rgba(255,255,255,0.08) 45%,
-      transparent 100%),
-    repeating-linear-gradient(180deg,
-      transparent 0px,
-      transparent 2.5px,
-      rgba(150, 95, 20, 0.07) 2.5px,
-      rgba(150, 95, 20, 0.07) 3.5px
+      rgba(255,255,255,0.52) 0%,
+      rgba(255,255,255,0.16) 30%,
+      transparent 68%),
+    repeating-linear-gradient(177deg,
+      transparent          0px,
+      transparent          3.5px,
+      rgba(118, 65,  8, 0.18) 3.5px,
+      rgba(118, 65,  8, 0.18) 4.5px,
+      transparent          4.5px,
+      transparent          9px,
+      rgba( 95, 50,  5, 0.12) 9px,
+      rgba( 95, 50,  5, 0.12) 10px
+    ),
+    repeating-linear-gradient(175deg,
+      transparent          0px,
+      transparent          6px,
+      rgba(155, 90, 15, 0.09) 6px,
+      rgba(155, 90, 15, 0.09) 7px,
+      transparent          7px,
+      transparent          14px,
+      rgba(100, 55,  5, 0.06) 14px,
+      rgba(100, 55,  5, 0.06) 15px
     ),
     linear-gradient(175deg,
-      #f6eac6 0%,
-      #ead598 18%,
-      #dfc47a 38%,
-      #cfae5e 58%,
-      #c1a048 80%,
-      #b89035 100%
+      #f5e9c4 0%,
+      #ebd49a 20%,
+      #dfc47a 40%,
+      #cfad5c 60%,
+      #c09f46 80%,
+      #b38e30 100%
     );
 
-  border: 1px solid #a07828;
+  border: 1px solid #9f7422;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.5),
-    inset 0 -1px 0 rgba(0,0,0,0.12),
-    0 2px 5px rgba(0,0,0,0.32),
-    0 1px 2px rgba(0,0,0,0.18);
+    inset 0 1px 0 rgba(255,255,255,0.52),
+    inset 0 -1px 0 rgba(0,0,0,0.14),
+    0 2px 6px rgba(0,0,0,0.34),
+    0 1px 2px rgba(0,0,0,0.20);
 
   transition: transform 0.14s, box-shadow 0.14s, filter 0.14s;
   user-select: none;
@@ -746,12 +761,24 @@ async function spin() {
 .stick.stick-on {
   background:
     linear-gradient(to bottom,
-      rgba(255,255,255,0.45) 0%,
-      rgba(255,255,255,0.1) 45%,
-      transparent 100%),
-    repeating-linear-gradient(180deg,
-      transparent 0px, transparent 2.5px,
-      rgba(180,120,0,0.1) 2.5px, rgba(180,120,0,0.1) 3.5px
+      rgba(255,255,255,0.52) 0%,
+      rgba(255,255,255,0.18) 30%,
+      transparent 68%),
+    repeating-linear-gradient(177deg,
+      transparent            0px,
+      transparent            3.5px,
+      rgba(160,100,  0,0.20) 3.5px,
+      rgba(160,100,  0,0.20) 4.5px,
+      transparent            4.5px,
+      transparent            9px,
+      rgba(130, 80,  0,0.13) 9px,
+      rgba(130, 80,  0,0.13) 10px
+    ),
+    repeating-linear-gradient(175deg,
+      transparent            0px,
+      transparent            6px,
+      rgba(180,115,  0,0.10) 6px,
+      rgba(180,115,  0,0.10) 7px
     ),
     linear-gradient(175deg,
       #fff6b0 0%, #f4cc48 18%, #e8b020 42%,
@@ -759,8 +786,8 @@ async function spin() {
     );
   border-color: #b87c00;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,220,0.6),
-    0 0 14px rgba(244,192,48,0.5),
+    inset 0 1px 0 rgba(255,255,220,0.62),
+    0 0 16px rgba(244,192,48,0.52),
     0 2px 6px rgba(0,0,0,0.28);
 }
 .stick.stick-on .stick-name {
