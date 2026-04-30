@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import DamageCalc from './components/DamageCalc.vue'
 import LuckyDraw from './components/LuckyDraw.vue'
 
-const activeTab = ref('damage')
+const activeTab = ref('lucky')
 const tabs = [
   { key: 'damage', label: '傷害計算' },
   { key: 'lucky',  label: '公會戰福袋' },
@@ -25,7 +25,7 @@ const tabs = [
     </header>
 
     <DamageCalc v-show="activeTab === 'damage'" />
-    <LuckyDraw v-show="activeTab === 'lucky'" />
+    <LuckyDraw  v-show="activeTab === 'lucky'" />
 
     <footer class="ft">忍豆風雲4工具箱</footer>
   </div>
@@ -33,7 +33,7 @@ const tabs = [
 
 <style scoped>
 .app {
-  max-width: 900px;
+  max-width: 1000px;
   margin: 0 auto;
   padding-bottom: 48px;
 }
@@ -49,32 +49,44 @@ const tabs = [
 }
 
 .hd-brand {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: var(--text3);
-  letter-spacing: 0.25em;
+  letter-spacing: 0.28em;
   text-transform: uppercase;
   padding-top: 4px;
 }
 
-.tab-bar { display: flex; }
+.tab-bar {
+  display: flex;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 10px;
+  padding: 3px;
+  border: 1px solid var(--border);
+}
 
 .tab-btn {
-  padding: 9px 22px 8px;
+  padding: 7px 22px;
+  border-radius: 7px;
   border: none;
-  border-bottom: 2px solid transparent;
   background: transparent;
   color: var(--text3);
-  font-size: 0.88rem;
+  font-size: 0.86rem;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.18s;
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
 
-.tab-btn:hover { color: var(--text2); }
-.tab-btn.active { color: var(--gold); border-bottom-color: var(--gold); }
+.tab-btn:hover:not(.active) { color: var(--text2); }
+
+.tab-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 6px rgba(0,0,0,0.4), inset 0 1px rgba(255,255,255,0.05);
+}
 
 .ft {
   text-align: center;
