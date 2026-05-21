@@ -49,7 +49,7 @@ function saveLots() { saveLS('nindou-lots', lots.value) }
 function addLot() {
   const text = newLotText.value.trim()
   if (!text) return
-  lots.value.push({ id: uid(), text, selected: false, statusId: null })
+  lots.value.push({ id: uid(), text, selected: true, statusId: null })
   newLotText.value = ''
   saveLots()
 }
@@ -73,10 +73,24 @@ function assignStatus(lot, statusId) { lot.statusId = lot.statusId === statusId 
 const selectedLots = computed(() => lots.value.filter(l => l.selected))
 
 // ── ROULETTE WHEEL ────────────────────────────────────────────────────────────
+// 忍豆風雲 黃金武器系配色（呼應黃金修羅爪、黃金苦無）
+// 規律：亮金 ↔ 深銅交錯，相鄰扇形對比最大化
 const COLORS = [
-  '#c0392b','#e67e22','#f1c40f','#27ae60','#2980b9',
-  '#8e44ad','#e91e63','#00bcd4','#ff5722','#607d8b',
-  '#795548','#009688','#3f51b5','#ff9800','#4caf50',
+  '#f4c030', // 純金
+  '#5a3a08', // 深棕金
+  '#fbcd3f', // 黃金苦無
+  '#8c4818', // 暗紅銅
+  '#fff099', // 亮金
+  '#a86a1f', // 古銅金
+  '#e9b13c', // 蜜金
+  '#3a2208', // 焦棕
+  '#e08f1a', // 橘金
+  '#6b4410', // 深銅
+  '#d4a93c', // 沙金
+  '#9c3018', // 修羅紅金
+  '#f7e58e', // 淡金
+  '#c4781e', // 橙銅
+  '#8a5c10', // 暗金棕
 ]
 
 const wheelAngle = ref(0)
@@ -308,6 +322,12 @@ async function spin() {
           <button class="lot-add-btn" @click="addLot">新增</button>
         </div>
 
+        <!-- Usage hint -->
+        <div class="lot-hint">
+          <span class="lot-hint-dot"></span>
+          點擊籤可加入／移出轉盤；
+        </div>
+
         <!-- Fortune sticks grid -->
         <div class="sticks-grid">
           <div v-if="!lots.length" class="sticks-empty">尚未新增任何籤</div>
@@ -326,10 +346,11 @@ async function spin() {
 
         <!-- Status config -->
         <details class="status-cfg">
-          <summary class="status-sum">狀態設定</summary>
+          <summary class="status-sum">領取標記設定（如：已領取／未領取）</summary>
           <div class="status-body">
+            <div class="status-hint">建立自訂標籤後，可於抽中時點按標記中獎者領取狀態</div>
             <div class="status-add">
-              <input v-model="newSLabel" class="s-inp" placeholder="狀態名稱⋯" maxlength="10" @keydown.enter="addStatus"/>
+              <input v-model="newSLabel" class="s-inp" placeholder="例：已領取" maxlength="10" @keydown.enter="addStatus"/>
               <input type="color" v-model="newSColor" class="c-inp"/>
               <button class="s-add-btn" @click="addStatus">+</button>
             </div>
@@ -365,8 +386,8 @@ async function spin() {
 .ld-body {
   display: grid;
   grid-template-columns: 1fr 280px;
-  gap: 1px;
-  background: var(--border);
+  gap: 2px;
+  background: var(--border2);
   min-height: 560px;
 }
 
@@ -397,7 +418,7 @@ async function spin() {
   align-items: center;
   padding: 24px 20px 20px;
   gap: 18px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border2);
 }
 
 .wheel-frame {
@@ -623,6 +644,29 @@ async function spin() {
 }
 .lot-add-btn:hover { border-color: var(--gold); color: var(--gold); }
 
+/* Usage hint under add row */
+.lot-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--text2);
+  margin: -4px 0 10px;
+  padding: 6px 9px;
+  background: rgba(244,192,48,0.06);
+  border: 1px solid rgba(244,192,48,0.22);
+  border-radius: var(--radius);
+  line-height: 1.35;
+}
+.lot-hint-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--gold);
+  flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(244,192,48,0.5);
+}
+.lot-hint-gold { color: var(--gold); font-weight: 700; }
+
 /* ── STICKS（古早味冰棒棍，細細長長，左右橫讀）── */
 .sticks-grid {
   display: flex;
@@ -807,6 +851,16 @@ async function spin() {
 }
 .status-sum:hover { color: var(--text2); }
 .status-body { padding: 8px 0 0; }
+.status-hint {
+  font-size: 0.72rem;
+  color: var(--text3);
+  line-height: 1.4;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background: rgba(244,192,48,0.05);
+  border-left: 2px solid rgba(244,192,48,0.35);
+  border-radius: 0 4px 4px 0;
+}
 .status-add { display: flex; gap: 4px; margin-bottom: 7px; align-items: center; }
 .s-inp {
   flex: 1; min-width: 0; background: var(--surface2); border: 1px solid var(--border);
