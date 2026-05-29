@@ -1,10 +1,17 @@
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 
-function loadLS(key, def) {
-  try { return JSON.parse(localStorage.getItem(key) ?? 'null') ?? def } catch { return def }
+interface Member { id: string; text: string; selected: boolean }
+interface Season { id: string; name: string }
+interface Winner { id: string; name: string; claimed: boolean; time: string }
+type BagKey = 'big' | 'small'
+type SeasonBag = Record<BagKey, Winner[]>
+type WinnersMap = Record<string, SeasonBag>
+
+function loadLS<T>(key: string, def: T): T {
+  try { return (JSON.parse(localStorage.getItem(key) ?? 'null') as T | null) ?? def } catch { return def }
 }
-function saveLS(key, val) { localStorage.setItem(key, JSON.stringify(val)) }
+function saveLS(key: string, val: unknown) { localStorage.setItem(key, JSON.stringify(val)) }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
 function nowStamp() {
   return new Date().toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -19,10 +26,10 @@ function nowStamp() {
 // 載入時先把「有被標記過」的成員名字撈進 legacyTaggedNames，稍後（onMounted）
 // 轉成「第三季 · 大福袋」的 winner（見 migrateLegacyTags）。撈完即丟掉 statusId，
 // 存檔後舊資料不再帶 statusId，故下次載入此陣列為空、不會重複遷移。
-const legacyTaggedNames = []
-function loadMembers() {
-  const raw = loadLS('nindou-lots', [])
-  return (Array.isArray(raw) ? raw : []).map(l => {
+const legacyTaggedNames: string[] = []
+function loadMembers(): Member[] {
+  const raw = loadLS<any[]>('nindou-lots', [])
+  return (Array.isArray(raw) ? raw : []).map((l: any) => {
     if (l.statusId) legacyTaggedNames.push(l.text)
     return {
       id: l.id ?? uid(),
@@ -31,11 +38,11 @@ function loadMembers() {
     }
   })
 }
-const members = ref(loadMembers())
+const members = ref<Member[]>(loadMembers())
 function saveMembers() { saveLS('nindou-lots', members.value) }
 
 const newMemberText = ref('')
-const editMemberId = ref(null)
+const editMemberId = ref<string | null>(null)
 const editMemberText = ref('')
 
 function addMember() {
@@ -45,41 +52,41 @@ function addMember() {
   newMemberText.value = ''
   saveMembers()
 }
-function startEditMember(m) { editMemberId.value = m.id; editMemberText.value = m.text }
+function startEditMember(m: Member) { editMemberId.value = m.id; editMemberText.value = m.text }
 function saveEditMember() {
   const m = members.value.find(x => x.id === editMemberId.value)
   if (m && editMemberText.value.trim()) m.text = editMemberText.value.trim()
   editMemberId.value = null; saveMembers()
 }
-function deleteMember(m) {
+function deleteMember(m: Member) {
   if (!confirm(`確定要從公會成員（籤庫）刪除「${m.text}」嗎？\n（已抽出的獲獎紀錄不受影響）`)) return
   members.value = members.value.filter(x => x.id !== m.id)
   if (winner.value?.id === m.id) winner.value = null
   saveMembers()
 }
-function toggleSelect(m) { m.selected = !m.selected; saveMembers() }
+function toggleSelect(m: Member) { m.selected = !m.selected; saveMembers() }
 function selectAll()  { members.value.forEach(m => m.selected = true);  saveMembers() }
 function selectNone() { members.value.forEach(m => m.selected = false); saveMembers() }
 
 const selectedMembers = computed(() => members.value.filter(m => m.selected))
 
 // ── SEASONS（季度，可 CRUD）──────────────────────────────────────────────────
-const DEFAULT_SEASONS = [
+const DEFAULT_SEASONS: Season[] = [
   { id: 'se1', name: '第一季' },
   { id: 'se2', name: '第二季' },
   { id: 'se3', name: '第三季' },
   { id: 'se4', name: '第四季' },
   { id: 'se5', name: '第五季' },
 ]
-const seasons = ref(loadLS('nindou-seasons', null) ?? DEFAULT_SEASONS.map(s => ({ ...s })))
+const seasons = ref<Season[]>(loadLS<Season[] | null>('nindou-seasons', null) ?? DEFAULT_SEASONS.map(s => ({ ...s })))
 function saveSeasons() { saveLS('nindou-seasons', seasons.value) }
 
 // 舊資料皆對應第三季 → 預設選第三季
-const activeSeasonId = ref(
-  loadLS('nindou-active-season', null) ??
+const activeSeasonId = ref<string | null>(
+  loadLS<string | null>('nindou-active-season', null) ??
   (seasons.value.find(s => s.id === 'se3')?.id ?? seasons.value[0]?.id ?? null)
 )
-const activeBag = ref(loadLS('nindou-active-bag', 'big')) // 'big' | 'small'
+const activeBag = ref<BagKey>(loadLS<BagKey>('nindou-active-bag', 'big'))
 
 const activeSeasonObj = computed(() => seasons.value.find(s => s.id === activeSeasonId.value) ?? null)
 const bagLabel = computed(() => activeBag.value === 'big' ? '大福袋' : '小福袋')
@@ -89,25 +96,25 @@ watch(activeBag, v => { saveLS('nindou-active-bag', v); resetDrawResult() })
 
 const showSeasonMng = ref(false)
 const newSeasonName = ref('')
-const editSeasonId = ref(null)
+const editSeasonId = ref<string | null>(null)
 const editSeasonName = ref('')
 
 function addSeason() {
   const name = newSeasonName.value.trim()
   if (!name) return
-  const s = { id: uid(), name }
+  const s: Season = { id: uid(), name }
   seasons.value.push(s)
   newSeasonName.value = ''
   saveSeasons()
   if (!activeSeasonId.value) activeSeasonId.value = s.id
 }
-function startEditSeason(s) { editSeasonId.value = s.id; editSeasonName.value = s.name }
+function startEditSeason(s: Season) { editSeasonId.value = s.id; editSeasonName.value = s.name }
 function saveEditSeason() {
   const s = seasons.value.find(x => x.id === editSeasonId.value)
   if (s && editSeasonName.value.trim()) s.name = editSeasonName.value.trim()
   editSeasonId.value = null; saveSeasons()
 }
-function deleteSeason(s) {
+function deleteSeason(s: Season) {
   if (seasons.value.length <= 1) return
   const cnt = seasonWinnerCount(s.id)
   const warn = cnt > 0 ? `\n此季已有 ${cnt} 筆獲獎紀錄，將一併刪除！` : ''
@@ -119,10 +126,10 @@ function deleteSeason(s) {
 }
 
 // ── WINNERS（獲獎成員＋領取紀錄，依季度＋福袋分別管理）───────────────────────
-const winners = ref(loadLS('nindou-winners', {}))
+const winners = ref<WinnersMap>(loadLS<WinnersMap>('nindou-winners', {}))
 function saveWinners() { saveLS('nindou-winners', winners.value) }
 
-function ensureBucket() {
+function ensureBucket(): Winner[] | null {
   const sid = activeSeasonId.value
   if (!sid) return null
   if (!winners.value[sid]) winners.value[sid] = { big: [], small: [] }
@@ -130,12 +137,12 @@ function ensureBucket() {
   if (!winners.value[sid].small) winners.value[sid].small = []
   return winners.value[sid][activeBag.value]
 }
-function seasonWinnerCount(sid) {
+function seasonWinnerCount(sid: string): number {
   const b = winners.value[sid]
   return (b?.big?.length ?? 0) + (b?.small?.length ?? 0)
 }
 
-const currentWinnerList = computed(() => {
+const currentWinnerList = computed<Winner[]>(() => {
   const sid = activeSeasonId.value
   if (!sid) return []
   return winners.value[sid]?.[activeBag.value] ?? []
@@ -144,25 +151,26 @@ const claimedCount = computed(() => currentWinnerList.value.filter(w => w.claime
 const recentWinners = computed(() => currentWinnerList.value.slice(-6).reverse())
 
 const newWinnerName = ref('')
-const editWinnerId = ref(null)
+const editWinnerId = ref<string | null>(null)
 const editWinnerName = ref('')
 
 function addWinner() {
   const name = newWinnerName.value.trim()
   if (!name || !activeSeasonId.value) return
   const list = ensureBucket()
+  if (!list) return
   list.push({ id: uid(), name, claimed: false, time: nowStamp() })
   newWinnerName.value = ''
   saveWinners()
 }
-function toggleClaim(w) { w.claimed = !w.claimed; saveWinners() }
-function startEditWinner(w) { editWinnerId.value = w.id; editWinnerName.value = w.name }
+function toggleClaim(w: Winner) { w.claimed = !w.claimed; saveWinners() }
+function startEditWinner(w: Winner) { editWinnerId.value = w.id; editWinnerName.value = w.name }
 function saveEditWinner() {
   const w = currentWinnerList.value.find(x => x.id === editWinnerId.value)
   if (w && editWinnerName.value.trim()) w.name = editWinnerName.value.trim()
   editWinnerId.value = null; saveWinners()
 }
-function deleteWinner(id) {
+function deleteWinner(id: string) {
   const sid = activeSeasonId.value
   if (!sid || !winners.value[sid]) return
   const rec = currentWinnerList.value.find(x => x.id === id)
@@ -173,7 +181,7 @@ function deleteWinner(id) {
 }
 
 // ── ROULETTE WHEEL ────────────────────────────────────────────────────────────
-const COLORS = [
+const COLORS: string[] = [
   '#f4c030', '#5a3a08', '#fbcd3f', '#8c4818', '#fff099', '#a86a1f', '#e9b13c',
   '#3a2208', '#e08f1a', '#6b4410', '#d4a93c', '#9c3018', '#f7e58e', '#c4781e', '#8a5c10',
 ]
@@ -181,8 +189,8 @@ const COLORS = [
 const wheelAngle = ref(0)
 const isSpinning = ref(false)
 const SPIN_SEC = 5
-const winner = ref(null)            // 被抽中的 member 物件
-const lastWinnerRecord = ref(null)  // 對應寫入的 winner 紀錄（含 claimed）
+const winner = ref<Member | null>(null)            // 被抽中的 member 物件
+const lastWinnerRecord = ref<Winner | null>(null)  // 對應寫入的 winner 紀錄（含 claimed）
 
 function resetDrawResult() { winner.value = null; lastWinnerRecord.value = null }
 
@@ -248,7 +256,7 @@ async function spin() {
   await new Promise(r => setTimeout(r, (SPIN_SEC + 0.5) * 1000))
   isSpinning.value = false
   // 寫入該季該福袋的獲獎名單
-  const rec = { id: uid(), name: picked.text, claimed: true, time: nowStamp() }
+  const rec: Winner = { id: uid(), name: picked.text, claimed: true, time: nowStamp() }
   const list = ensureBucket()
   if (list) { list.push(rec); saveWinners(); lastWinnerRecord.value = rec }
   winner.value = picked

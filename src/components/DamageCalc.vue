@@ -1,267 +1,150 @@
-<script setup>
+<script setup lang="ts">
+/* ════════════════════════════════════════════════════════════════════════════
+   傷害計算 — UI 層
+   只負責「反應式接線 + 畫面 + 樣式」。所有規則在 src/damage/config.ts，
+   引擎機械在 src/damage/engine.ts。要改規則請去 config.ts，不必動這支。
+   ════════════════════════════════════════════════════════════════════════════ */
 import { ref, reactive, computed } from 'vue'
+import { resolveModifiers, signed } from '../damage/engine'
+import {
+  ELEMENTS, ELEM_COLOR, ELEMENT_ADJ, ELEMENT_RULE, elementMult,
+  ATTACKER_BUFFS, DEFENDER_STATES, MODIFIER_CATEGORIES, SHURA_CORRECTION, ATTACK_TYPES, SPECIAL_RULES,
+  type Element,
+} from '../damage/config'
+import type { AttackType, ModifierDef, ModifierStep, ModifierTone } from '../damage/types'
 
-const ATTACK_TYPES = [
-  { key: 'normal',   label: '普攻 / 式神' },
-  { key: 'ult',      label: '奧義' },
-  { key: 'ninjutsu', label: '攻擊系忍術' },
-  { key: 'dart',     label: '錢標' },
-  { key: 'charge',   label: '衝撞' },
-]
+// enabled !== false 的才納入：把某規則 enabled 設為 false（或刪掉）即從 UI 與計算一併消失。
+const attackTypes    = ATTACK_TYPES.filter(t => t.enabled !== false)
+const attackerBuffs  = ATTACKER_BUFFS.filter(b => b.enabled !== false)
+const defenderStates = DEFENDER_STATES.filter(s => s.enabled !== false)
+const specialRules   = SPECIAL_RULES.filter(r => r.enabled !== false)
 
-const CHARGE_PRESETS = [
-  { label: '非變身 30',  val: 30  },
-  { label: '夜叉 100',   val: 100 },
-  { label: '赤鬼 200',   val: 200 },
-]
-
-const ELEMENTS = ['無', '炎', '冰', '風', '雷', '地', '光', '闇', '修羅', '毒', '木']
-const ELEM_COLOR = {
-  '無': '#888899', '炎': '#ff6b35', '冰': '#74c0fc', '風': '#a9e34b', '雷': '#f4c030',
-  '地': '#b07b45', '光': '#ffd700', '闇': '#b08fff', '修羅': '#e63946', '毒': '#2dd4bf', '木': '#52b788',
+// 依分類分區（道具效果／忍術效果／職業特性）。空分區自動略過；分類順序由 config 決定。
+function groupByCategory(defs: ModifierDef[]) {
+  return MODIFIER_CATEGORIES
+    .map(cat => ({ cat, items: defs.filter(d => d.category === cat) }))
+    .filter(g => g.items.length > 0)
 }
-const ADJ = {
-  '無':  { '修羅': 0.2, '毒': 0.2, '木': 0.2, '光': -0.2 },
-  '炎':  { '風': 0.2, '毒': 0.2, '木': 0.2, '炎': -0.2, '冰': -0.2 },
-  '冰':  { '炎': 0.2, '毒': 0.2, '木': 0.2, '冰': -0.2, '地': -0.2 },
-  '風':  { '雷': 0.2, '毒': 0.2, '木': 0.2, '炎': -0.2, '風': -0.2 },
-  '雷':  { '地': 0.2, '毒': 0.2, '木': 0.2, '風': -0.2, '雷': -0.2 },
-  '地':  { '冰': 0.2, '毒': 0.2, '木': 0.2, '雷': -0.2, '地': -0.2 },
-  '光':  { '闇': 0.2, '修羅': 0.2, '毒': 0.2, '無': -0.2, '光': -0.2 },
-  '闇':  { '無': 0.2, '光': 0.2, '木': 0.2, '闇': -0.2, '修羅': -0.2 },
-  '修羅': { '無': 0.2, '毒': 0.2, '木': 0.2, '闇': -0.2, '修羅': -0.2 },
-  '毒':  { '無': 0.2, '炎': 0.2, '冰': 0.2, '風': 0.2, '雷': 0.2, '地': 0.2, '修羅': 0.2, '木': 0.2, '光': -0.2, '毒': -0.2 },
-  '木':  { '無': 0.2, '炎': 0.2, '冰': 0.2, '風': 0.2, '雷': 0.2, '地': 0.2, '毒': 0.2, '闇': -0.2, '木': -0.2 },
+const attackerGroups  = groupByCategory(attackerBuffs)
+const defenderGroups  = groupByCategory(defenderStates)
+
+const TONE_CLASS: Record<ModifierTone, string> = { atk: 'atk-act', def: 'def-act', grn: 'grn-act', wrath: 'wrath' }
+
+const activeTypeId = ref<string>(attackTypes[0].id)
+const atkBuffs  = reactive<Record<string, boolean>>(Object.fromEntries(attackerBuffs.map(b => [b.id, false])))
+const defStates = reactive<Record<string, boolean>>(Object.fromEntries(defenderStates.map(s => [s.id, false])))
+const atkAttr   = reactive<{ a1: Element; a2: Element; dual: boolean }>({ a1: '無', a2: '無', dual: false })
+const defAttr   = reactive<{ a1: Element; a2: Element; dual: boolean }>({ a1: '無', a2: '無', dual: false })
+const inputs    = reactive<Record<string, number>>({ base: 0, specialDef: 0, atkStat: 0 })
+const toggles   = reactive<Record<string, boolean>>(Object.fromEntries(specialRules.map(r => [r.id, false])))
+
+const activeType = computed<AttackType>(() => attackTypes.find(t => t.id === activeTypeId.value) ?? attackTypes[0])
+
+const atkAttrs = computed<Element[]>(() => atkAttr.dual && atkAttr.a2 !== atkAttr.a1 ? [atkAttr.a1, atkAttr.a2] : [atkAttr.a1])
+const defAttrs = computed<Element[]>(() => defAttr.dual && defAttr.a2 !== defAttr.a1 ? [defAttr.a1, defAttr.a2] : [defAttr.a1])
+const attackerHasShura = computed(() => atkAttrs.value.includes('修羅'))
+
+// 攻方暴怒法印能否無視受擊方青蟲——攻方對承受倍率的唯一干涉。攻擊系忍術關閉此干涉，
+// 使「攻方使用什麼都不影響傷害，只有受擊方自身狀態生效」。
+const attackerWrathOnDrm = computed(() =>
+  activeType.value.uses.attackerWrathVoidsGreenBug !== false && !!atkBuffs.wrathSeal)
+
+const bamRes = computed(() => resolveModifiers(attackerBuffs, atkBuffs))
+const drmRes = computed(() => resolveModifiers(defenderStates, defStates, { attackerWrath: attackerWrathOnDrm.value }))
+
+const BAM    = computed(() => bamRes.value.value)
+const rawDRM = computed(() => drmRes.value.value)
+const shuraApplies   = computed(() => activeType.value.uses.shura)
+const DRM            = computed(() => SHURA_CORRECTION.apply(rawDRM.value, { attackerHasShura: attackerHasShura.value, applies: shuraApplies.value }))
+const shuraCorrected = computed(() => DRM.value !== rawDRM.value)
+const CM   = computed(() => Math.round((BAM.value + DRM.value - 1) * 100) / 100)
+const elem = computed(() => activeType.value.uses.element ? elementMult(atkAttrs.value, defAttrs.value) : 1)
+
+const ctx = computed(() => ({ i: inputs, BAM: BAM.value, rawDRM: rawDRM.value, DRM: DRM.value, CM: CM.value, elem: elem.value }))
+const finalDmg     = computed(() => activeType.value.formula(ctx.value))
+const finalFormula = computed(() => activeType.value.formulaText(ctx.value))
+
+const activeSpecials = computed(() => specialRules.filter(r => r.appliesTo.includes(activeTypeId.value)))
+
+// 攻擊狀態區的提示：說明此攻擊類型對攻方狀態的取用方式。
+const atkBlockHint = computed(() => {
+  const u = activeType.value.uses
+  if (u.bam) return ''
+  if (!u.drm) return '（攻擊方狀態不計入此類型）'
+  if (u.attackerWrathVoidsGreenBug === false) return '（攻擊方狀態完全不影響此類型；僅受擊方自身狀態生效）'
+  return '（攻擊倍率不計入此類型；攻方暴怒仍影響防方青蟲）'
+})
+
+// 各按鈕的啟用狀態（on / suppressed / disabled），供樣式與警告使用。
+const atkStatus = computed<Record<string, string>>(() => Object.fromEntries(bamRes.value.steps.map(s => [s.id, s.status])))
+const defStatus = computed<Record<string, string>>(() => Object.fromEntries(drmRes.value.steps.map(s => [s.id, s.status])))
+
+const atkWarn = computed(() =>
+  bamRes.value.steps.filter(s => s.status !== 'on').map(s => `${s.label}（${s.note}）`).join('　'))
+const defWarn = computed(() =>
+  drmRes.value.steps.filter(s => s.status !== 'on').map(s => `${s.label}（${s.note}）`).join('　'))
+
+interface StepRow { label: string; valText: string; cls: string; off: boolean; note?: string }
+function stepRows(steps: ModifierStep[], extra: StepRow[] = []): StepRow[] {
+  const rows: StepRow[] = [{ label: '基礎', valText: '1', cls: '', off: false }]
+  for (const s of steps) {
+    const off = s.status !== 'on'
+    rows.push({
+      label: s.label,
+      valText: signed(s.delta),
+      cls: off ? 'off' : (s.delta > 0 ? 'pos' : s.delta < 0 ? 'neg' : ''),
+      off, note: s.note,
+    })
+  }
+  return [...rows, ...extra]
 }
-
-const ATK_BTNS = [
-  { key: 'hotblood',   label: '熱血',     val: '+0.5'  },
-  { key: 'magicWater', label: '魔水',     val: '+1'    },
-  { key: 'redBug',     label: '赤蟲',     val: '−0.5' },
-  { key: 'shikigami',  label: '式神',     val: '+1'    },
-  { key: 'wrathSeal',  label: '暴怒法印', val: '+3'    },
-]
-const DEF_BTNS = [
-  { key: 'steel',      label: '鋼鐵',     val: '−0.25' },
-  { key: 'magicWater', label: '魔水',     val: '−0.5'  },
-  { key: 'greenBug',   label: '青蟲',     val: '+0.5'  },
-  { key: 'wrathSeal',  label: '暴怒法印', val: '+3'    },
-]
-
-function getAdj(a, d) { return ADJ[a]?.[d] ?? 0 }
-function r2(n) { return Math.round(n * 100) / 100 }
-
-const attackType = ref('normal')
-const baseDmg    = ref(0)
-const specialDef = ref(0)
-const poisonToad = ref(false)
-
-// formula flags
-const bamApplies   = computed(() => ['normal', 'dart', 'charge'].includes(attackType.value))
-const elemApplies  = computed(() => ['normal', 'ult'].includes(attackType.value))
-const shuraApplies = computed(() => ['normal', 'ult', 'charge'].includes(attackType.value))
-const showSpecialDef = computed(() => ['ult', 'ninjutsu'].includes(attackType.value))
-const specialDefLabel = computed(() => attackType.value === 'ult' ? '奧防' : '術防')
-
-const atk = reactive({ hotblood: false, magicWater: false, redBug: false, shikigami: false, wrathSeal: false, attr1: '無', attr2: '無', useDual: false })
-const def = reactive({ steel: false, magicWater: false, greenBug: false, wrathSeal: false, attr1: '無', attr2: '無', useDual: false })
-
-const eAtk = computed(() => {
-  if (atk.wrathSeal)
-    return { hotblood: false, magicWater: false, redBug: atk.redBug, shikigami: atk.shikigami, wrathSeal: true }
-  if (atk.magicWater)
-    return { hotblood: false, magicWater: true, redBug: atk.redBug, shikigami: atk.shikigami, wrathSeal: false }
-  return { hotblood: atk.hotblood, magicWater: false, redBug: atk.redBug, shikigami: atk.shikigami, wrathSeal: false }
-})
-
-const eDef = computed(() => {
-  const greenBugActive = def.greenBug && !atk.wrathSeal
-  if (def.wrathSeal)
-    return { steel: false, magicWater: false, greenBug: false, wrathSeal: true }
-  if (def.magicWater)
-    return { steel: false, magicWater: true, greenBug: greenBugActive, wrathSeal: false }
-  return { steel: def.steel, magicWater: false, greenBug: greenBugActive, wrathSeal: false }
-})
-
-const atkAttrs = computed(() => {
-  const a = [atk.attr1]
-  if (atk.useDual && atk.attr2 !== atk.attr1) a.push(atk.attr2)
-  return a
-})
-const defAttrs = computed(() => {
-  const a = [def.attr1]
-  if (def.useDual && def.attr2 !== def.attr1) a.push(def.attr2)
-  return a
-})
-
-const atkHasShura = computed(() => atkAttrs.value.includes('修羅'))
-
-const BAM = computed(() => {
-  const e = eAtk.value
-  let v = 1
-  if (e.wrathSeal)       v += 3
-  else if (e.magicWater) v += 1
-  else if (e.hotblood)   v += 0.5
-  if (e.redBug)    v -= 0.5
-  if (e.shikigami) v += 1
-  return r2(v)
-})
-
-const rawDRM = computed(() => {
-  const e = eDef.value
-  if (e.wrathSeal) return 4
-  let v = 1
-  if (e.magicWater)    v -= 0.5
-  else if (e.steel)    v -= 0.25
-  if (e.greenBug) v += 0.5
-  return r2(v)
-})
-
-const DRM = computed(() => {
-  const v = rawDRM.value
-  return (atkHasShura.value && shuraApplies.value && v < 1) ? 1 : v
-})
-
-const CM = computed(() => r2(BAM.value + DRM.value - 1))
-
-const elemMult = computed(() => {
-  if (!elemApplies.value) return 1
-  let adj = 0
-  for (const a of atkAttrs.value)
-    for (const d of defAttrs.value)
-      adj += getAdj(a, d)
-  return r2(1 + adj)
-})
-
-const effectiveBase = computed(() => attackType.value === 'dart' ? 150 : (Number(baseDmg.value) || 0))
-
-const finalDmg = computed(() => {
-  const base = effectiveBase.value
-  const sd   = Number(specialDef.value) || 0
-  switch (attackType.value) {
-    case 'normal':   return Math.floor(base * CM.value * elemMult.value)
-    case 'ult':      return Math.max(0, Math.floor(base * DRM.value * elemMult.value) - sd)
-    case 'ninjutsu': return Math.max(0, Math.floor(base * DRM.value) - sd)
-    case 'dart':     return Math.floor(150 * CM.value)
-    case 'charge':   return Math.floor(base * CM.value)
-    default: return 0
-  }
-})
-
-const poisonToadDmg = computed(() =>
-  poisonToad.value && attackType.value === 'charge' ? finalDmg.value * 3 : null
-)
-
-const finalFormula = computed(() => {
-  const base = effectiveBase.value
-  const sd   = Number(specialDef.value) || 0
-  switch (attackType.value) {
-    case 'normal':   return `${base} × CM(${CM.value}) × 屬性(${elemMult.value})`
-    case 'ult':      return `floor(${base} × DRM(${DRM.value}) × 屬性(${elemMult.value})) − 奧防(${sd})`
-    case 'ninjutsu': return `floor(${base} × DRM(${DRM.value})) − 術防(${sd})`
-    case 'dart':     return `150 × CM(${CM.value})`
-    case 'charge':   return `${base} × CM(${CM.value})`
-    default: return ''
-  }
-})
-
-const atkWarn = computed(() => {
-  if (atk.wrathSeal) {
-    const lost = [atk.magicWater && '魔水', atk.hotblood && '熱血'].filter(Boolean)
-    return lost.length ? `暴怒法印啟動：${lost.join('、')} 失效` : ''
-  }
-  return (atk.magicWater && atk.hotblood) ? '魔水啟動：熱血 失效' : ''
-})
-
-const defWarn = computed(() => {
-  const msgs = []
-  if (def.wrathSeal) {
-    const lost = [def.magicWater && '魔水', def.steel && '鋼鐵'].filter(Boolean)
-    if (lost.length) msgs.push(`暴怒法印啟動：${lost.join('、')} 失效`)
-  } else if (def.magicWater && def.steel) {
-    msgs.push('魔水啟動：鋼鐵 失效')
-  }
-  if (def.greenBug && atk.wrathSeal) msgs.push('攻方暴怒法印：青蟲 無效')
-  return msgs.join('　')
-})
-
-const bamDetail = computed(() => {
-  const steps = [{ label: '基礎', val: '1', cls: '' }]
-  if (atk.wrathSeal) {
-    steps.push({ label: '暴怒法印', val: '+3', cls: 'pos' })
-    if (atk.magicWater) steps.push({ label: '魔水', val: '+1', cls: 'off' })
-    if (atk.hotblood)   steps.push({ label: '熱血', val: '+0.5', cls: 'off' })
-  } else if (atk.magicWater) {
-    steps.push({ label: '魔水', val: '+1', cls: 'pos' })
-    if (atk.hotblood) steps.push({ label: '熱血', val: '+0.5', cls: 'off' })
-  } else if (atk.hotblood) {
-    steps.push({ label: '熱血', val: '+0.5', cls: 'pos' })
-  }
-  if (atk.redBug)    steps.push({ label: '赤蟲', val: '−0.5', cls: 'neg' })
-  if (atk.shikigami) steps.push({ label: '式神', val: '+1', cls: 'pos' })
-  return steps
-})
-
-const drmDetail = computed(() => {
-  const steps = [{ label: '基礎', val: '1', cls: '' }]
-  if (def.wrathSeal) {
-    steps.push({ label: '暴怒法印', val: '+3', cls: 'pos' })
-    if (def.magicWater) steps.push({ label: '魔水', val: '−0.5', cls: 'off' })
-    if (def.steel)      steps.push({ label: '鋼鐵', val: '−0.25', cls: 'off' })
-  } else if (def.magicWater) {
-    steps.push({ label: '魔水', val: '−0.5', cls: 'neg' })
-    if (def.steel) steps.push({ label: '鋼鐵', val: '−0.25', cls: 'off' })
-  } else if (def.steel) {
-    steps.push({ label: '鋼鐵', val: '−0.25', cls: 'neg' })
-  }
-  if (def.greenBug && !def.wrathSeal) {
-    const active = eDef.value.greenBug
-    steps.push({ label: '青蟲', val: '+0.5', cls: active ? 'pos' : 'off', note: active ? '' : '攻方暴怒法印，無效' })
-  }
-  if (atkHasShura.value && shuraApplies.value && rawDRM.value < 1)
-    steps.push({ label: '修羅補正', val: '↑≥1', cls: 'shura' })
-  return steps
-})
+const bamDetail = computed(() => stepRows(bamRes.value.steps))
+const drmDetail = computed(() => stepRows(drmRes.value.steps,
+  shuraCorrected.value ? [{ label: SHURA_CORRECTION.label, valText: '↑≥1', cls: 'shura', off: false }] : []))
 
 const elemDetail = computed(() => {
-  if (!elemApplies.value) return []
-  const result = []
+  if (!activeType.value.uses.element) return []
+  const out: { a: Element; d: Element; adj: number }[] = []
   for (const a of atkAttrs.value)
     for (const d of defAttrs.value) {
-      const adj = getAdj(a, d)
-      if (adj !== 0) result.push({ a, d, adj })
+      const adj = ELEMENT_ADJ[a]?.[d] ?? 0
+      if (adj !== 0) out.push({ a, d, adj })
     }
-  return result
+  return out
 })
 
-function atkBtnCls(key) {
-  if (!atk[key]) return {}
-  const eff = eAtk.value[key]
-  return { on: true, dim: !eff, wrath: key === 'wrathSeal' && eff, 'atk-act': key !== 'wrathSeal' && eff }
+// app 內「規則一覽」：與計算共用同一份定義，永不脫鉤。
+const RULE_BOOK = [
+  { title: '攻擊類型公式',        items: attackTypes.map(t => ({ label: t.label, rule: t.rule })) },
+  { title: '攻擊倍率（BAM）來源', items: attackerBuffs.map(b => ({ label: b.label, rule: b.rule })) },
+  { title: '承受倍率（DRM）來源', items: defenderStates.map(s => ({ label: s.label, rule: s.rule })) },
+  { title: '修羅補正',            items: [{ label: SHURA_CORRECTION.label, rule: SHURA_CORRECTION.rule }] },
+  { title: '屬性相剋',            items: [{ label: '相剋規則', rule: ELEMENT_RULE }] },
+  { title: '獨立規則',            items: specialRules.map(r => ({ label: r.label, rule: r.rule })) },
+]
+
+function btnClass(active: boolean, status: string | undefined, tone: ModifierTone) {
+  if (!active) return {}
+  const eff = status === 'on'
+  const c: Record<string, boolean> = { on: true, dim: !eff }
+  if (eff) c[TONE_CLASS[tone]] = true
+  return c
 }
 
-function defBtnCls(key) {
-  if (!def[key]) return {}
-  const eff = eDef.value[key]
-  return { on: true, dim: !eff, wrath: key === 'wrathSeal' && eff, 'grn-act': key === 'greenBug' && eff, 'def-act': key !== 'wrathSeal' && key !== 'greenBug' && eff }
-}
-
-function setAttackType(type) {
-  attackType.value = type
-  specialDef.value = 0
-  poisonToad.value = false
-  if (type === 'dart') baseDmg.value = 150
-  else if (type === 'charge') baseDmg.value = 30
-  else baseDmg.value = 0
+function setType(id: string) {
+  activeTypeId.value = id
+  const t = attackTypes.find(x => x.id === id) ?? attackTypes[0]
+  inputs.base = 0; inputs.specialDef = 0; inputs.atkStat = 0
+  for (const f of t.inputs) inputs[f.id] = f.default ?? 0
+  for (const r of specialRules) toggles[r.id] = false
 }
 
 function resetAll() {
-  attackType.value = 'normal'
-  baseDmg.value = 0
-  specialDef.value = 0
-  poisonToad.value = false
-  Object.assign(atk, { hotblood: false, magicWater: false, redBug: false, shikigami: false, wrathSeal: false, attr1: '無', attr2: '無', useDual: false })
-  Object.assign(def, { steel: false, magicWater: false, greenBug: false, wrathSeal: false, attr1: '無', attr2: '無', useDual: false })
+  for (const b of attackerBuffs) atkBuffs[b.id] = false
+  for (const s of defenderStates) defStates[s.id] = false
+  Object.assign(atkAttr, { a1: '無', a2: '無', dual: false })
+  Object.assign(defAttr, { a1: '無', a2: '無', dual: false })
+  setType(attackTypes[0].id)
 }
 </script>
 
@@ -271,45 +154,35 @@ function resetAll() {
     <!-- ATTACK TYPE SELECTOR -->
     <div class="type-bar">
       <button
-        v-for="t in ATTACK_TYPES" :key="t.key"
-        class="type-btn" :class="{ active: attackType === t.key }"
-        @click="setAttackType(t.key)"
+        v-for="t in attackTypes" :key="t.id"
+        class="type-btn" :class="{ active: activeTypeId === t.id }"
+        @click="setType(t.id)"
       >{{ t.label }}</button>
     </div>
 
-    <!-- BASE DAMAGE + SPECIAL DEF -->
+    <!-- BASE / INPUTS -->
     <div class="base-sec">
       <div class="base-inner">
-        <span class="base-lbl">基礎傷害</span>
-
-        <!-- 錢標 fixed -->
-        <span v-if="attackType === 'dart'" class="base-fixed">150（固定）</span>
-        <!-- others: input -->
-        <input v-else type="number" v-model.number="baseDmg" min="0" placeholder="0" class="base-inp" />
-
-        <!-- 衝撞 presets -->
-        <div v-if="attackType === 'charge'" class="presets">
-          <button
-            v-for="p in CHARGE_PRESETS" :key="p.val"
-            class="pre-btn" :class="{ 'pre-active': baseDmg === p.val }"
-            @click="baseDmg = p.val"
-          >{{ p.label }}</button>
-        </div>
-
-        <!-- 奧防 / 術防 -->
-        <template v-if="showSpecialDef">
-          <span class="base-lbl base-lbl-def">{{ specialDefLabel }}</span>
-          <input type="number" v-model.number="specialDef" min="0" placeholder="0" class="base-inp base-inp-sm" />
+        <template v-for="f in activeType.inputs" :key="f.id">
+          <span class="base-lbl" :class="{ 'base-lbl-def': f.id === 'specialDef' }">{{ f.label }}</span>
+          <input
+            type="number" v-model.number="inputs[f.id]" min="0" placeholder="0"
+            class="base-inp" :class="{ 'base-inp-sm': f.id === 'specialDef' }"
+          />
+          <div v-if="f.presets" class="presets">
+            <button
+              v-for="p in f.presets" :key="p.val"
+              class="pre-btn" :class="{ 'pre-active': inputs[f.id] === p.val }"
+              @click="inputs[f.id] = p.val"
+            >{{ p.label }}</button>
+          </div>
         </template>
 
-        <!-- 毒遁 toggle -->
-        <label v-if="attackType === 'charge'" class="toad-lbl">
-          <input type="checkbox" v-model="poisonToad" />
-          <span>毒遁</span>
-        </label>
+        <span v-if="activeType.baseNote" class="base-fixed">{{ activeType.baseNote }}</span>
 
         <button class="pre-btn rst-btn" @click="resetAll">重置</button>
       </div>
+      <div v-if="activeType.caution" class="caution-note">※ {{ activeType.caution }}</div>
     </div>
 
     <!-- PANELS -->
@@ -326,45 +199,49 @@ function resetAll() {
         <div class="pblk">
           <div class="pblk-hd">
             攻擊狀態
-            <span v-if="!bamApplies" class="na-hint">（BAM 不計入此類型；暴怒法印仍影響防方青蟲）</span>
+            <span v-if="atkBlockHint" class="na-hint">{{ atkBlockHint }}</span>
           </div>
-          <div class="btn-row">
-            <button
-              v-for="b in ATK_BTNS" :key="b.key"
-              class="sbtn" :class="atkBtnCls(b.key)"
-              @click="atk[b.key] = !atk[b.key]"
-            >
-              <span class="sb-name">{{ b.label }}</span>
-              <span class="sb-val">{{ b.val }}</span>
-            </button>
+          <div v-for="g in attackerGroups" :key="g.cat" class="cat-group">
+            <div class="cat-label">{{ g.cat }}</div>
+            <div class="btn-row">
+              <button
+                v-for="b in g.items" :key="b.id"
+                class="sbtn" :class="btnClass(atkBuffs[b.id], atkStatus[b.id], b.tone)"
+                @click="atkBuffs[b.id] = !atkBuffs[b.id]"
+              >
+                <span class="sb-name">{{ b.label }}</span>
+                <span class="sb-val">{{ signed(b.delta) }}</span>
+              </button>
+            </div>
           </div>
           <div v-if="atkWarn" class="warn">{{ atkWarn }}</div>
         </div>
 
-        <div class="pblk" :class="{ 'pblk-na': !elemApplies }">
+        <div class="pblk" :class="{ 'pblk-na': !activeType.uses.element }">
           <div class="pblk-hd">
             元素屬性
-            <span v-if="!elemApplies" class="na-hint">（屬性不計入此類型；修羅仍影響 DRM 補正）</span>
+            <span v-if="!activeType.uses.element && activeType.uses.shura" class="na-hint">（屬性不計入此類型；修羅仍影響承受倍率補正）</span>
+            <span v-else-if="!activeType.uses.element" class="na-hint">（屬性不計入此類型）</span>
           </div>
           <div class="egrid">
             <button
               v-for="e in ELEMENTS" :key="e"
-              class="ebtn" :class="{ 'ebtn-on': atk.attr1 === e }"
-              :style="atk.attr1 === e ? { '--ec': ELEM_COLOR[e] } : {}"
-              @click="atk.attr1 = e"
+              class="ebtn" :class="{ 'ebtn-on': atkAttr.a1 === e }"
+              :style="atkAttr.a1 === e ? { '--ec': ELEM_COLOR[e] } : {}"
+              @click="atkAttr.a1 = e"
             >{{ e }}</button>
           </div>
           <label class="dual-lbl">
-            <input type="checkbox" v-model="atk.useDual" />
+            <input type="checkbox" v-model="atkAttr.dual" />
             <span>雙屬性</span>
           </label>
-          <div v-if="atk.useDual" class="egrid mt4">
+          <div v-if="atkAttr.dual" class="egrid mt4">
             <button
               v-for="e in ELEMENTS" :key="e"
               class="ebtn"
-              :class="{ 'ebtn-on': atk.attr2 === e, 'ebtn-same': e === atk.attr1 && e !== '無' }"
-              :style="atk.attr2 === e ? { '--ec': ELEM_COLOR[e] } : {}"
-              @click="atk.attr2 = e"
+              :class="{ 'ebtn-on': atkAttr.a2 === e, 'ebtn-same': e === atkAttr.a1 && e !== '無' }"
+              :style="atkAttr.a2 === e ? { '--ec': ELEM_COLOR[e] } : {}"
+              @click="atkAttr.a2 = e"
             >{{ e }}</button>
           </div>
           <div v-if="atkAttrs.filter(e => e !== '無').length" class="chips">
@@ -385,44 +262,50 @@ function resetAll() {
         </div>
 
         <div class="pblk">
-          <div class="pblk-hd">承受狀態</div>
-          <div class="btn-row">
-            <button
-              v-for="b in DEF_BTNS" :key="b.key"
-              class="sbtn" :class="defBtnCls(b.key)"
-              @click="def[b.key] = !def[b.key]"
-            >
-              <span class="sb-name">{{ b.label }}</span>
-              <span class="sb-val">{{ b.val }}</span>
-            </button>
+          <div class="pblk-hd">
+            承受狀態
+            <span v-if="!activeType.uses.drm" class="na-hint">（此類型無視承受倍率）</span>
+          </div>
+          <div v-for="g in defenderGroups" :key="g.cat" class="cat-group">
+            <div class="cat-label">{{ g.cat }}</div>
+            <div class="btn-row">
+              <button
+                v-for="s in g.items" :key="s.id"
+                class="sbtn" :class="btnClass(defStates[s.id], defStatus[s.id], s.tone)"
+                @click="defStates[s.id] = !defStates[s.id]"
+              >
+                <span class="sb-name">{{ s.label }}</span>
+                <span class="sb-val">{{ signed(s.delta) }}</span>
+              </button>
+            </div>
           </div>
           <div v-if="defWarn" class="warn">{{ defWarn }}</div>
         </div>
 
-        <div class="pblk" :class="{ 'pblk-na': !elemApplies }">
+        <div class="pblk" :class="{ 'pblk-na': !activeType.uses.element }">
           <div class="pblk-hd">
             元素屬性
-            <span v-if="!elemApplies" class="na-hint">（屬性不計入此類型）</span>
+            <span v-if="!activeType.uses.element" class="na-hint">（屬性不計入此類型）</span>
           </div>
           <div class="egrid">
             <button
               v-for="e in ELEMENTS" :key="e"
-              class="ebtn" :class="{ 'ebtn-on': def.attr1 === e }"
-              :style="def.attr1 === e ? { '--ec': ELEM_COLOR[e] } : {}"
-              @click="def.attr1 = e"
+              class="ebtn" :class="{ 'ebtn-on': defAttr.a1 === e }"
+              :style="defAttr.a1 === e ? { '--ec': ELEM_COLOR[e] } : {}"
+              @click="defAttr.a1 = e"
             >{{ e }}</button>
           </div>
           <label class="dual-lbl">
-            <input type="checkbox" v-model="def.useDual" />
+            <input type="checkbox" v-model="defAttr.dual" />
             <span>雙屬性</span>
           </label>
-          <div v-if="def.useDual" class="egrid mt4">
+          <div v-if="defAttr.dual" class="egrid mt4">
             <button
               v-for="e in ELEMENTS" :key="e"
               class="ebtn"
-              :class="{ 'ebtn-on': def.attr2 === e, 'ebtn-same': e === def.attr1 && e !== '無' }"
-              :style="def.attr2 === e ? { '--ec': ELEM_COLOR[e] } : {}"
-              @click="def.attr2 = e"
+              :class="{ 'ebtn-on': defAttr.a2 === e, 'ebtn-same': e === defAttr.a1 && e !== '無' }"
+              :style="defAttr.a2 === e ? { '--ec': ELEM_COLOR[e] } : {}"
+              @click="defAttr.a2 = e"
             >{{ e }}</button>
           </div>
           <div v-if="defAttrs.filter(e => e !== '無').length" class="chips">
@@ -442,69 +325,68 @@ function resetAll() {
       <div class="fcards">
 
         <!-- BAM -->
-        <div class="fcard" :class="{ 'fcard-na': !bamApplies }">
+        <div class="fcard" :class="{ 'fcard-na': !activeType.uses.bam }">
           <div class="fc-name">
             攻擊倍率 <span class="tag">BAM</span>
-            <span v-if="!bamApplies" class="na-tag">不計入公式</span>
+            <span v-if="!activeType.uses.bam" class="na-tag">不計入公式</span>
           </div>
-          <div class="fc-val" :class="bamApplies ? (BAM > 1 ? 'v-pos' : BAM < 1 ? 'v-neg' : '') : 'v-na'">
-            {{ BAM }}
-          </div>
+          <div class="fc-val" :class="activeType.uses.bam ? (BAM > 1 ? 'v-pos' : BAM < 1 ? 'v-neg' : '') : 'v-na'">{{ BAM }}</div>
           <div class="steps">
-            <div v-for="(s, i) in bamDetail" :key="i" class="step" :class="{ 'step-off': s.cls === 'off' }">
-              <span class="sv" :class="'sv-' + s.cls">{{ s.val }}</span>
+            <div v-for="(s, i) in bamDetail" :key="i" class="step" :class="{ 'step-off': s.off }">
+              <span class="sv" :class="'sv-' + s.cls">{{ s.valText }}</span>
               <span class="sl">{{ s.label }}</span>
+              <span v-if="s.note" class="sn">{{ s.note }}</span>
             </div>
           </div>
           <div class="fc-eq">= {{ BAM }}</div>
         </div>
 
         <!-- DRM -->
-        <div class="fcard">
-          <div class="fc-name">承受倍率 <span class="tag">DRM</span></div>
-          <div class="fc-val" :class="DRM > 1 ? 'v-pos' : DRM < 1 ? 'v-neg' : ''">{{ DRM }}</div>
+        <div class="fcard" :class="{ 'fcard-na': !activeType.uses.drm }">
+          <div class="fc-name">
+            承受倍率 <span class="tag">DRM</span>
+            <span v-if="!activeType.uses.drm" class="na-tag">不計入公式</span>
+          </div>
+          <div class="fc-val" :class="activeType.uses.drm ? (DRM > 1 ? 'v-pos' : DRM < 1 ? 'v-neg' : '') : 'v-na'">{{ DRM }}</div>
           <div class="steps">
-            <div v-for="(s, i) in drmDetail" :key="i" class="step" :class="{ 'step-off': s.cls === 'off' }">
-              <span class="sv" :class="'sv-' + s.cls">{{ s.val }}</span>
+            <div v-for="(s, i) in drmDetail" :key="i" class="step" :class="{ 'step-off': s.off }">
+              <span class="sv" :class="'sv-' + s.cls">{{ s.valText }}</span>
               <span class="sl">{{ s.label }}</span>
               <span v-if="s.note" class="sn">{{ s.note }}</span>
             </div>
           </div>
           <div class="fc-eq">
             = {{ DRM }}
-            <span v-if="atkHasShura && shuraApplies && rawDRM < 1" class="shura-note">（修羅補正）</span>
+            <span v-if="shuraCorrected" class="shura-note">（修羅補正）</span>
           </div>
         </div>
 
         <!-- CM -->
-        <div class="fcard fcard-cm" :class="{ 'fcard-na': !bamApplies }">
+        <div class="fcard fcard-cm" :class="{ 'fcard-na': !activeType.uses.cm }">
           <div class="fc-name">
             綜合倍率 <span class="tag">CM</span>
-            <span v-if="!bamApplies" class="na-tag">不計入公式</span>
+            <span v-if="!activeType.uses.cm" class="na-tag">不計入公式</span>
           </div>
-          <div class="fc-val fc-val-lg" :class="bamApplies ? (CM > 1 ? 'v-pos' : CM < 1 ? 'v-neg' : '') : 'v-na'">
-            {{ CM }}
-          </div>
+          <div class="fc-val fc-val-lg" :class="activeType.uses.cm ? (CM > 1 ? 'v-pos' : CM < 1 ? 'v-neg' : '') : 'v-na'">{{ CM }}</div>
           <div class="cm-formula">BAM({{ BAM }}) + DRM({{ DRM }}) − 1</div>
         </div>
 
         <!-- 屬性相剋 -->
-        <div class="fcard fcard-elem" :class="{ 'fcard-na': !elemApplies }">
+        <div class="fcard fcard-elem" :class="{ 'fcard-na': !activeType.uses.element }">
           <div class="fc-name">
             屬性相剋
-            <span v-if="!elemApplies" class="na-tag">不計入公式</span>
+            <span v-if="!activeType.uses.element" class="na-tag">不計入公式</span>
           </div>
-          <div class="fc-val fc-val-lg" :class="elemApplies ? (elemMult > 1 ? 'v-pos' : elemMult < 1 ? 'v-neg' : '') : 'v-na'">
-            {{ elemApplies ? elemMult + 'x' : '—' }}
+          <div class="fc-val fc-val-lg" :class="activeType.uses.element ? (elem > 1 ? 'v-pos' : elem < 1 ? 'v-neg' : '') : 'v-na'">
+            {{ activeType.uses.element ? elem + 'x' : '—' }}
           </div>
           <div class="elem-parts">
-            <template v-if="elemApplies">
+            <template v-if="activeType.uses.element">
               <span v-if="!elemDetail.length" class="ep-none">無相剋</span>
               <span
                 v-for="(p, i) in elemDetail" :key="i"
-                class="ep"
-                :class="p.adj > 0 ? 'ep-pos' : p.adj < 0 ? 'ep-neg' : 'ep-neu'"
-              >{{ p.adj > 0 ? '+' : p.adj < 0 ? '−' : '±' }}0.2 {{ p.a }}→{{ p.d }}</span>
+                class="ep" :class="p.adj > 0 ? 'ep-pos' : p.adj < 0 ? 'ep-neg' : 'ep-neu'"
+              >{{ p.adj > 0 ? '+' : '−' }}0.2 {{ p.a }}→{{ p.d }}</span>
             </template>
             <span v-else class="ep-none">此類型不受屬性影響</span>
           </div>
@@ -516,22 +398,31 @@ function resetAll() {
       <div class="final-box">
         <div class="final-formula">{{ finalFormula }}</div>
         <div class="final-label">最終傷害</div>
-        <div class="final-num" :class="finalDmg > 0 ? 'num-hi' : ''">
-          {{ finalDmg.toLocaleString() }}
+        <div class="final-num" :class="finalDmg > 0 ? 'num-hi' : ''">{{ finalDmg.toLocaleString() }}</div>
+      </div>
+
+      <!-- 獨立附加規則（如毒遁）-->
+      <div v-for="r in activeSpecials" :key="r.id" class="toad-box">
+        <label class="toad-toggle">
+          <input type="checkbox" v-model="toggles[r.id]" />
+          <span>{{ r.label }}傷害（{{ r.note }}）</span>
+        </label>
+        <div v-if="toggles[r.id]" class="toad-result">
+          {{ r.exprText({ finalDmg }) }} =
+          <span class="toad-num">{{ r.compute({ finalDmg }).toLocaleString() }}</span>
         </div>
       </div>
 
-      <!-- 毒遁 RESULT -->
-      <div v-if="attackType === 'charge'" class="toad-box">
-        <label class="toad-toggle">
-          <input type="checkbox" v-model="poisonToad" />
-          <span>毒遁傷害（衝撞最終 × 3，對變身系無效，無視 DRM 與術防）</span>
-        </label>
-        <div v-if="poisonToadDmg !== null" class="toad-result">
-          {{ finalDmg.toLocaleString() }} × 3 =
-          <span class="toad-num">{{ poisonToadDmg.toLocaleString() }}</span>
+      <!-- 規則一覽：與計算共用同一份定義 -->
+      <details class="rules-ref">
+        <summary>傷害規則一覽（與計算同源，點開查看）</summary>
+        <div v-for="g in RULE_BOOK" :key="g.title" class="rb-group">
+          <div class="rb-title">{{ g.title }}</div>
+          <div v-for="it in g.items" :key="it.label" class="rb-item">
+            <b>{{ it.label }}</b>：{{ it.rule }}
+          </div>
         </div>
-      </div>
+      </details>
 
     </section>
 
@@ -635,26 +526,7 @@ function resetAll() {
 .pre-btn.pre-active { border-color: var(--gold); color: var(--gold); background: rgba(244,192,48,0.08); }
 .rst-btn { border-color: var(--border); color: var(--text3); margin-left: auto; }
 .rst-btn:hover { border-color: var(--red); color: var(--red); }
-
-/* 毒遁 toggle in base row */
-.toad-lbl {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.8rem;
-  color: var(--text2);
-  cursor: pointer;
-  border: 1px solid var(--border2);
-  border-radius: 20px;
-  padding: 4px 12px;
-  background: var(--surface);
-  transition: all 0.12s;
-}
-.toad-lbl:has(input:checked) {
-  border-color: var(--purple);
-  color: var(--purple);
-  background: rgba(176,143,255,0.08);
-}
+.caution-note { margin-top: 8px; font-size: 0.72rem; color: var(--gold); opacity: 0.85; }
 
 /* PANELS */
 .panels {
@@ -719,6 +591,29 @@ function resetAll() {
   letter-spacing: 0;
   color: var(--text3);
   opacity: 0.8;
+}
+
+/* CATEGORY SUB-SECTIONS（道具效果／忍術效果／職業特性）*/
+.cat-group { margin-bottom: 10px; }
+.cat-group:last-child { margin-bottom: 0; }
+.cat-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--text3);
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+  opacity: 0.9;
+}
+.cat-label::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--gold);
+  opacity: 0.6;
 }
 
 /* STATUS BUTTONS */
@@ -946,7 +841,7 @@ function resetAll() {
 }
 .num-hi { color: var(--gold); }
 
-/* 毒遁 */
+/* 獨立附加規則（毒遁等）*/
 .toad-box {
   margin-top: 12px;
   background: rgba(176,143,255,0.06);
@@ -978,4 +873,36 @@ function resetAll() {
   font-variant-numeric: tabular-nums;
   margin-left: 4px;
 }
+
+/* RULES REFERENCE (app 自帶說明) */
+.rules-ref {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface2);
+  padding: 0 16px;
+}
+.rules-ref > summary {
+  cursor: pointer;
+  padding: 12px 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text2);
+  letter-spacing: 0.04em;
+  list-style: none;
+}
+.rules-ref > summary::-webkit-details-marker { display: none; }
+.rules-ref > summary::before { content: '▸ '; color: var(--gold); }
+.rules-ref[open] > summary::before { content: '▾ '; }
+.rb-group { padding: 9px 0 12px; border-top: 1px solid var(--border); }
+.rb-title {
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 7px;
+}
+.rb-item { font-size: 0.76rem; color: var(--text2); line-height: 1.55; margin-bottom: 5px; }
+.rb-item b { color: var(--text); }
 </style>

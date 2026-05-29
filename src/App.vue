@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import DamageCalc from './components/DamageCalc.vue'
 import LuckyDraw from './components/LuckyDraw.vue'
@@ -8,9 +8,9 @@ const tabs = [
   { key: 'lucky',  label: '公會戰福袋抽籤' },
 ]
 
-const getTabFromURL = () => {
+function getTabFromURL(): string {
   const t = new URLSearchParams(window.location.search).get('tab')
-  return tabs.some(x => x.key === t) ? t : 'lucky'
+  return t && tabs.some(x => x.key === t) ? t : 'lucky'
 }
 
 const activeTab = ref(getTabFromURL())
