@@ -107,7 +107,7 @@ export interface AttackType {
   label: string
   uses: AttackTypeUses
   inputs: AttackInput[]
-  /** 固定值類型（錢標 150、佛滅 200…）在輸入列顯示的說明文字。 */
+  /** 固定原始值類型（如錢標 150）在輸入列顯示的說明文字。 */
   baseNote?: string
   /** 提醒（如土遁規則待測試）。 */
   caution?: string
@@ -116,7 +116,7 @@ export interface AttackType {
   rule: string
 }
 
-/** 依附在某攻擊結果之上的獨立規則（如毒遁）。 */
+/** 依附在某攻擊結果之上、額外計算的附加規則。 */
 export interface SpecialRule {
   enabled?: boolean
   id: string

@@ -120,8 +120,8 @@ const RULE_BOOK = [
   { title: '承受倍率（DRM）來源', items: defenderStates.map(s => ({ label: s.label, rule: s.rule })) },
   { title: '修羅補正',            items: [{ label: SHURA_CORRECTION.label, rule: SHURA_CORRECTION.rule }] },
   { title: '屬性相剋',            items: [{ label: '相剋規則', rule: ELEMENT_RULE }] },
-  { title: '獨立規則',            items: specialRules.map(r => ({ label: r.label, rule: r.rule })) },
-]
+  { title: '附加規則',            items: specialRules.map(r => ({ label: r.label, rule: r.rule })) },
+].filter(g => g.items.length > 0)  // 無項目的分區（如目前的附加規則）自動隱藏
 
 function btnClass(active: boolean, status: string | undefined, tone: ModifierTone) {
   if (!active) return {}
@@ -401,7 +401,7 @@ function resetAll() {
         <div class="final-num" :class="finalDmg > 0 ? 'num-hi' : ''">{{ finalDmg.toLocaleString() }}</div>
       </div>
 
-      <!-- 獨立附加規則（如毒遁）-->
+      <!-- 附加規則：依附在最終傷害之上的額外計算（目前無啟用項目）-->
       <div v-for="r in activeSpecials" :key="r.id" class="toad-box">
         <label class="toad-toggle">
           <input type="checkbox" v-model="toggles[r.id]" />
@@ -841,7 +841,7 @@ function resetAll() {
 }
 .num-hi { color: var(--gold); }
 
-/* 獨立附加規則（毒遁等）*/
+/* 附加規則（依附最終傷害的額外計算）*/
 .toad-box {
   margin-top: 12px;
   background: rgba(176,143,255,0.06);

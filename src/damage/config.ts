@@ -4,7 +4,7 @@
    要改規則就改這裡，且每個功能保證「單一位置」：
      • 新增/移除一個攻擊增益、承受狀態 → 增刪 ATTACKER_BUFFS / DEFENDER_STATES 的一個物件
      • 新增/移除一種攻擊類型           → 增刪 ATTACK_TYPES 的一個物件（公式、輸入、說明都在內）
-     • 新增/移除一條獨立規則（如毒遁） → 增刪 SPECIAL_RULES 的一個物件
+     • 新增/移除一條附加規則（依附攻擊結果） → 增刪 SPECIAL_RULES 的一個物件
    想暫時關閉而不刪除：把該物件的 enabled 設為 false（按鈕、計算、規則一覽會一起消失）。
 
    數值與規則來源：本專案 notion.md「傷害計算」。每個物件的 rule 欄即該條規則摘要，
@@ -158,13 +158,7 @@ export const ATTACK_TYPES: AttackType[] = [
   },
 ]
 
-/* ── 獨立附加規則（依附在某攻擊類型結果之上）────────────────────────────────── */
-export const SPECIAL_RULES: SpecialRule[] = [
-  {
-    id: 'poisonToad', label: '毒遁', appliesTo: ['charge'],
-    compute: ({ finalDmg }) => finalDmg * 3,
-    exprText: ({ finalDmg }) => `${finalDmg} × 3`,
-    note: '衝撞最終 × 3，對變身系無效，無視承受倍率與術防（可疊加）',
-    rule: '毒遁 = 承受「衝撞最終傷害」× 3。對變身系無效；無視承受倍率與術防；多個毒遁可疊加。',
-  },
-]
+/* ── 獨立附加規則（依附在某攻擊類型結果之上）──────────────────────────────────
+   依附在某攻擊類型最終傷害之上、額外計算的規則。目前無啟用項目；
+   要新增一條就往陣列加一個物件（含 appliesTo／compute／exprText），UI 會自動長出。 */
+export const SPECIAL_RULES: SpecialRule[] = []
