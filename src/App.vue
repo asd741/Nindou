@@ -2,10 +2,12 @@
 import { ref, watch, onMounted } from 'vue'
 import DamageCalc from './components/DamageCalc.vue'
 import LuckyDraw from './components/LuckyDraw.vue'
+import ContribDashboard from './components/ContribDashboard.vue'
 
 const tabs = [
-  { key: 'damage', label: '傷害計算' },
-  { key: 'lucky',  label: '公會戰福袋抽籤' },
+  { key: 'damage',  label: '傷害計算' },
+  { key: 'lucky',   label: '公會戰福袋抽籤' },
+  { key: 'contrib', label: '公會貢獻度' },
 ]
 
 function getTabFromURL(): string {
@@ -44,8 +46,9 @@ onMounted(() => {
       </nav>
     </header>
 
-    <DamageCalc v-show="activeTab === 'damage'" />
-    <LuckyDraw  v-show="activeTab === 'lucky'" />
+    <DamageCalc       v-show="activeTab === 'damage'" />
+    <LuckyDraw        v-show="activeTab === 'lucky'" />
+    <ContribDashboard v-show="activeTab === 'contrib'" />
 
     <footer class="ft">忍豆風雲4工具箱</footer>
   </div>
@@ -53,7 +56,7 @@ onMounted(() => {
 
 <style scoped>
 .app {
-  max-width: 1000px;
+  max-width: 95vw;
   margin: 0 auto;
   padding-bottom: 48px;
 }
@@ -61,7 +64,7 @@ onMounted(() => {
 .hd {
   background: linear-gradient(135deg, #0a0a12 0%, #12101e 100%);
   border-bottom: 1px solid var(--border);
-  padding: 14px 20px 0;
+  padding: 14px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;

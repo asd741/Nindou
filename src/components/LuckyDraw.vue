@@ -845,6 +845,7 @@ watch(user, (u) => {
   position: relative;
   width: min(300px, calc(100vw - 80px));
   height: min(300px, calc(100vw - 80px));
+  margin: 10px auto;
   display: flex; align-items: center; justify-content: center;
 }
 .deco-ring {

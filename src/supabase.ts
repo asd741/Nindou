@@ -9,7 +9,7 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 // 缺設定時給出明確錯誤，避免 UI 只是無聲失敗。
 export const isSupabaseConfigured = Boolean(url && anonKey)
 if (!isSupabaseConfigured) {
-  console.error('[Supabase] 尚未設定 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY，請參考 .env.example 與 SETUP.md。')
+  console.error('[Supabase] 尚未設定 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY，請參考 .env.example 與 dev.md。')
 }
 
 // 未設定時給合法的預留位置，避免 createClient 因空字串直接拋錯而讓整個 App

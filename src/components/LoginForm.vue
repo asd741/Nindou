@@ -65,7 +65,7 @@ async function submit() {
       <p class="auth-sub">登入後即可雲端保存你的公會成員與中獎紀錄，換裝置也不遺失。</p>
 
       <div v-if="!isSupabaseConfigured" class="auth-warn">
-        尚未設定資料庫連線（VITE_SUPABASE_URL / ANON_KEY）。請參考專案的 SETUP.md。
+        尚未設定資料庫連線（VITE_SUPABASE_URL / ANON_KEY）。請參考專案的 dev.md。
       </div>
 
       <div class="auth-tabs">
@@ -105,7 +105,7 @@ async function submit() {
   padding: 48px 18px; min-height: 420px;
 }
 .auth-card {
-  width: 100%; max-width: 380px;
+  width: 100%; max-width: 400px;
   background: linear-gradient(135deg, #14121e, #17151f);
   border: 1px solid var(--border2); border-radius: var(--radius-lg);
   padding: 30px 26px 24px; text-align: center;

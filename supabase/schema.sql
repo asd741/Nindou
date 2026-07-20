@@ -63,3 +63,66 @@ create policy "own seasons" on public.seasons
 drop policy if exists "own winners" on public.winners;
 create policy "own winners" on public.winners
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 公會貢獻度 Dashboard —— 對應前端 src/contrib/store.ts
+-- ───────────────────────────────────────────────────────────────────────────
+-- 資料模型是一張「動態試算表」：
+--   contrib_members  成員（列／每位公會成員）
+--   contrib_columns  欄位（欄／可自訂事件或備註）
+--                    kind='number' 時帶 weight（權重），計分用；'text' 為純文字欄
+--   contrib_cells    成員×欄位的值（一律存 text；number 欄計分時再由前端 parse）
+-- 某成員某欄的分數 = 值 × 權重；成員總分 = 所有 number 欄分數加總（前端計算）。
+-- 每張表都有 user_id，RLS 限制「每個帳號只能存取自己的資料」，與上方各表一致。
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ── 成員（列）────────────────────────────────────────────────────────────────
+create table if not exists public.contrib_members (
+  id         uuid        primary key default gen_random_uuid(),
+  user_id    uuid        not null default auth.uid() references auth.users(id) on delete cascade,
+  name       text        not null,                 -- 簡稱（列的身分；匯入時以此對應同一人）
+  sort_order integer     not null default 0,
+  created_at timestamptz not null default now()
+);
+
+-- ── 欄位／事件定義（欄）──────────────────────────────────────────────────────
+create table if not exists public.contrib_columns (
+  id         uuid        primary key default gen_random_uuid(),
+  user_id    uuid        not null default auth.uid() references auth.users(id) on delete cascade,
+  name       text        not null,
+  kind       text        not null default 'number' check (kind in ('number', 'text')),
+  weight     numeric     not null default 0,        -- 僅 number 欄使用；分數 = 值 × weight
+  sort_order integer     not null default 0,
+  created_at timestamptz not null default now()
+);
+
+-- ── 成員×欄位的值；刪成員或欄位時一併刪除，(member,column) 唯一以支援 upsert ──
+create table if not exists public.contrib_cells (
+  id         uuid        primary key default gen_random_uuid(),
+  user_id    uuid        not null default auth.uid() references auth.users(id) on delete cascade,
+  member_id  uuid        not null references public.contrib_members(id) on delete cascade,
+  column_id  uuid        not null references public.contrib_columns(id) on delete cascade,
+  value      text        not null default '',
+  created_at timestamptz not null default now(),
+  unique (member_id, column_id)
+);
+
+create index if not exists contrib_members_user_idx on public.contrib_members (user_id, sort_order, created_at);
+create index if not exists contrib_columns_user_idx on public.contrib_columns (user_id, sort_order, created_at);
+create index if not exists contrib_cells_user_idx   on public.contrib_cells   (user_id, member_id);
+
+alter table public.contrib_members enable row level security;
+alter table public.contrib_columns enable row level security;
+alter table public.contrib_cells   enable row level security;
+
+drop policy if exists "own contrib_members" on public.contrib_members;
+create policy "own contrib_members" on public.contrib_members
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "own contrib_columns" on public.contrib_columns;
+create policy "own contrib_columns" on public.contrib_columns
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "own contrib_cells" on public.contrib_cells;
+create policy "own contrib_cells" on public.contrib_cells
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
